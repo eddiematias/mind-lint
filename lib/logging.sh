@@ -4,6 +4,10 @@
 #
 # Colors are emitted only when stderr is a TTY; pipes and CI get plain text.
 
+# Guard against re-sourcing. Without this, `readonly` assignments below abort
+# under `set -e` if the file is sourced more than once in the same shell.
+[ -n "${LOG_RESET+x}" ] && return 0
+
 if [ -t 2 ]; then
     readonly LOG_RESET=$'\033[0m'
     readonly LOG_BOLD=$'\033[1m'
