@@ -23,6 +23,8 @@ Thumbs.db
 
 # Internal planning docs (not for public repo)
 docs/specs/
+docs/plans/
+docs/superpowers/
 
 # Temp files
 *.tmp
