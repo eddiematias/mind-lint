@@ -27,7 +27,9 @@ fi
 if [ -f "$CLAUDE_DIR/wiki/_log.md" ]; then
     LAST_LINT=$(grep -i "lint" "$CLAUDE_DIR/wiki/_log.md" | tail -1 | grep -oE "[0-9]{4}-[0-9]{2}-[0-9]{2}" | tail -1)
     if [ -n "$LAST_LINT" ]; then
-        DAYS_SINCE=$(( ($(date +%s) - $(date -j -f "%Y-%m-%d" "$LAST_LINT" +%s 2>/dev/null || date -d "$LAST_LINT" +%s 2>/dev/null || echo $(date +%s))) / 86400 ))
+        LAST_LINT_EPOCH=$(date -j -f "%Y-%m-%d" "$LAST_LINT" +%s 2>/dev/null || date -d "$LAST_LINT" +%s 2>/dev/null || date +%s)
+        NOW_EPOCH=$(date +%s)
+        DAYS_SINCE=$(( (NOW_EPOCH - LAST_LINT_EPOCH) / 86400 ))
         if [ "$DAYS_SINCE" -gt 7 ]; then
             echo "🔍 Last lint was $DAYS_SINCE days ago — consider running /lint"
         fi

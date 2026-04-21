@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 # Shared test helpers. Source from every .bats file via: load 'helpers'
+#
+# Note: intentionally no `set -euo pipefail` here. Bats handles failure
+# propagation via `run` and `$status`; enabling -e globally breaks bats'
+# assertion semantics. Leave it off.
 
 # Create an isolated fake $HOME for a test. Sets FAKE_HOME and HOME.
 # Returns 0 on success. The directory is auto-removed by teardown().
@@ -7,7 +11,6 @@ make_fake_home() {
     FAKE_HOME="$(mktemp -d -t mindlint-test-XXXXXX)"
     export FAKE_HOME
     export HOME="$FAKE_HOME"
-    export ORIGINAL_HOME_BACKUP="${HOME_BEFORE_TEST:-}"
     mkdir -p "$FAKE_HOME/.claude"
 }
 
