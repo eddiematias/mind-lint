@@ -94,3 +94,29 @@ setup() {
     done
     [ "$actual_commands" -eq "$expected_commands" ]
 }
+
+@test "for_each_manifest_entry filters by category" {
+    local collected=()
+    _collect() { collected+=("$1"); }
+    for_each_manifest_entry "2" "" _collect
+    # Should be exactly 4 cat-2 entries (workflows, boundaries, code-review, content-creation)
+    [ "${#collected[@]}" -eq 4 ]
+}
+
+@test "for_each_manifest_entry filters by subtype" {
+    local collected=()
+    _collect() { collected+=("$1"); }
+    for_each_manifest_entry "1" "dir" _collect
+    # Should be exactly 2 cat-1 dir entries (templates, docs)
+    [ "${#collected[@]}" -eq 2 ]
+}
+
+@test "for_each_manifest_entry with no filters visits every entry" {
+    local collected=()
+    _collect() { collected+=("$1"); }
+    for_each_manifest_entry "" "" _collect
+    # Count all non-comment, non-blank lines in manifest
+    local expected
+    expected=$(grep -vE '^#|^$' "$FAKE_HOME/mindlint/manifest.conf" | wc -l | tr -d ' ')
+    [ "${#collected[@]}" -eq "$expected" ]
+}

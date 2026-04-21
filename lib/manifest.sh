@@ -59,3 +59,21 @@ for_each_cat1_per_file() {
         done
     done < "$MANIFEST_PATH"
 }
+
+# Iterate every manifest entry matching the given filters.
+# Usage: for_each_manifest_entry <cat-filter> <sub-filter> <callback>
+#   <cat-filter>: "1", "2", "3", or "" (any)
+#   <sub-filter>: "per-file", "dir", "copy", "seed", "claude-md", or "" (any)
+#   callback receives: glob cat sub tgt
+for_each_manifest_entry() {
+    local cat_filter="$1"
+    local sub_filter="$2"
+    local callback="$3"
+    local glob cat sub tgt
+    while IFS='|' read -r glob cat sub tgt; do
+        [[ -z "$glob" || "$glob" =~ ^# ]] && continue
+        if [ -n "$cat_filter" ] && [ "$cat" != "$cat_filter" ]; then continue; fi
+        if [ -n "$sub_filter" ] && [ "$sub" != "$sub_filter" ]; then continue; fi
+        "$callback" "$glob" "$cat" "$sub" "$tgt"
+    done < "$MANIFEST_PATH"
+}
