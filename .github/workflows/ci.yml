@@ -14,10 +14,9 @@ jobs:
       - name: Run shellcheck on all shell scripts
         run: |
           set -e
-          # setup.sh is excluded: the legacy installer is being replaced in
-          # Task 9 of the dotfile-install refactor. Remove this exclusion
-          # once the new setup.sh lands (it will be shellcheck-clean).
-          find . -name '*.sh' -not -path './tests/*' -not -name 'setup.sh' -print0 | xargs -0 shellcheck
+          # archive/ holds the legacy installer (setup.sh.old); skip it.
+          # -x follows sourced files for install.sh's lib/ imports.
+          find . -name '*.sh' -not -path './tests/*' -not -path './archive/*' -print0 | xargs -0 shellcheck -x
 
   test:
     runs-on: ubuntu-latest
