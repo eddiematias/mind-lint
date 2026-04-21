@@ -89,6 +89,15 @@ _resolve_cat1_collision() {
             else
                 renamed="${dest}.user"
             fi
+            # If a prior .user backup already exists, append a timestamp
+            # so we never silently clobber an earlier rename.
+            if [ -e "$renamed" ]; then
+                if [[ "$renamed" == *.md ]]; then
+                    renamed="${renamed%.md}.$(date +%s).md"
+                else
+                    renamed="${renamed}.$(date +%s)"
+                fi
+            fi
             mv "$dest" "$renamed"
             ln -s "$source_file" "$dest"
             log_done "renamed yours to $renamed and linked ours"
@@ -357,8 +366,20 @@ EOF
 _install_settings() {
     log_info "Updating settings.json"
     local settings="$CLAUDE_DIR/settings.json"
-    add_hook "$settings" "SessionStart" "bash ~/.claude/scripts/session-start.sh"
-    add_hook "$settings" "SessionEnd" "bash ~/.claude/scripts/auto-commit.sh"
+    # Use ~/.claude/... when CLAUDE_DIR is the default (portable across machines
+    # that share the dotfile git repo). Use the absolute path when the user has
+    # overridden CLAUDE_DIR via MINDLINT_CLAUDE_DIR (otherwise hooks would point
+    # to the wrong location).
+    local hook_base
+    if [ "$CLAUDE_DIR" = "$HOME/.claude" ]; then
+        # shellcheck disable=SC2088  # intentional: literal ~ stored in settings.json,
+        # expanded at hook invocation time (portable across machines sharing the dotfile repo)
+        hook_base="~/.claude/scripts"
+    else
+        hook_base="$CLAUDE_DIR/scripts"
+    fi
+    add_hook "$settings" "SessionStart" "bash $hook_base/session-start.sh"
+    add_hook "$settings" "SessionEnd" "bash $hook_base/auto-commit.sh"
     local rule
     while IFS= read -r rule; do
         add_permission "$settings" "$rule"
