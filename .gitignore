@@ -1,0 +1,33 @@
+# Obsidian workspace state (changes constantly, personal)
+.obsidian/workspace.json
+.obsidian/workspace-mobile.json
+.obsidian/graph.json
+.obsidian/backlinks-in-document.json
+.obsidian/bookmarks.json
+
+# Obsidian plugin data caches
+.obsidian/plugins/*/data.json
+.obsidian/themes/
+.obsidian/snippets/
+
+# Claude Code native auto memory (managed separately)
+.claude/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.idea/
+.vscode/
+
+# Internal planning docs (not for public repo)
+docs/specs/
+
+# Temp files
+*.tmp
+*.swp
+*~
+
+# Node modules
+node_modules/

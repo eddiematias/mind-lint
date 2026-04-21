@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "bash ~/.claude/scripts/session-start.sh"
+      }
+    ],
+    "SessionEnd": [
+      {
+        "type": "command",
+        "command": "bash ~/.claude/scripts/auto-commit.sh"
+      }
+    ]
+  }
+}
