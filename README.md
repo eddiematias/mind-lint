@@ -34,22 +34,22 @@ Same files. Three tools. Zero sync.
 ### The Architecture
 
 Five layers:
-1. **Raw** — immutable source materials (articles, transcripts, notes)
-2. **Memory** — learnings, decisions, and corrections (per-event logs)
-3. **Wiki** — AI-compiled knowledge pages (cross-linked, confidence-scored, self-maintaining)
-4. **Skills & Rules** — reusable workflows and permanent error corrections
-5. **Content** — pipeline from idea to draft to published
+1. **Raw**: immutable source materials (articles, transcripts, notes)
+2. **Memory**: learnings, decisions, and corrections (per-event logs)
+3. **Wiki**: AI-compiled knowledge pages (cross-linked, confidence-scored, self-maintaining)
+4. **Skills & Rules**: reusable workflows and permanent error corrections
+5. **Content**: pipeline from idea to draft to published
 
 ### Key Features
 
-- **Modular context loading** — a lean base loads every session (~150 lines). Additional context loads only when the task calls for it.
-- **Error-to-rule pipeline** — every AI mistake becomes a permanent numbered rule. The system gets smarter when it fails.
-- **Confidence scoring** — wiki pages carry confidence scores based on source count, recency, and contradictions.
-- **Supersession** — new info explicitly marks old claims as stale, not silently overwrites them.
-- **Event-driven automation** — session start shows system health, session end auto-commits, privacy filtering strips sensitive data on ingest.
-- **Content pipeline** — the process of building things IS content. Auto-captures ideas, tracks drafts, publishes to multiple formats.
-- **Knowledge mining** — extract learnings from past Claude Code sessions and Claude.ai chat exports.
-- **14 slash commands** — `/log`, `/compile`, `/lint`, `/search-knowledge`, `/reindex`, `/prune`, `/review-logs`, `/weekly-review`, `/init-project`, `/archive-project`, `/content`, `/publish`, `/mine-sessions`, `/mine-chats`
+- **Modular context loading**: a lean base loads every session (~150 lines). Additional context loads only when the task calls for it.
+- **Error-to-rule pipeline**: every AI mistake becomes a permanent numbered rule. The system gets smarter when it fails.
+- **Confidence scoring**: wiki pages carry confidence scores based on source count, recency, and contradictions.
+- **Supersession**: new info explicitly marks old claims as stale, not silently overwrites them.
+- **Event-driven automation**: session start shows system health, session end auto-commits, privacy filtering strips sensitive data on ingest.
+- **Content pipeline**: the process of building things IS content. Auto-captures ideas, tracks drafts, publishes to multiple formats.
+- **Knowledge mining**: extract learnings from past Claude Code sessions and Claude.ai chat exports.
+- **14 slash commands**: `/log`, `/compile`, `/lint`, `/search-knowledge`, `/reindex`, `/prune`, `/review-logs`, `/weekly-review`, `/init-project`, `/archive-project`, `/content`, `/publish`, `/mine-sessions`, `/mine-chats`
 
 ---
 
@@ -210,9 +210,9 @@ Every AI mistake becomes a numbered rule in `rules/error-rules.md`. Rules are pe
 
 ## Documentation
 
-- `docs/system-guide.md` — Complete walkthrough of the entire system
-- `docs/obsidian-setup.md` — Step-by-step Obsidian configuration
-- `docs/credits.md` — Attribution for all ideas and influences
+- `docs/system-guide.md`: Complete walkthrough of the entire system
+- `docs/obsidian-setup.md`: Step-by-step Obsidian configuration
+- `docs/credits.md`: Attribution for all ideas and influences
 
 ---
 
@@ -220,13 +220,13 @@ Every AI mistake becomes a numbered rule in `rules/error-rules.md`. Rules are pe
 
 Mind-Lint builds on ideas shared openly by others:
 
-- **Andrej Karpathy** — [LLM Wiki pattern](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)
-- **Rohit Ghumare** — [LLM Wiki v2](https://gist.github.com/rohitg00/2067ab416f7bbe447c1977edaaa681e2) (memory lifecycle)
-- **Michael Tuszynski** — [Context Engineering](https://www.mpt.solutions/context-engineering-is-the-new-prompt-engineering/) (error-to-rule pipeline)
-- **Daniel Miessler** — [Personal AI Infrastructure](https://github.com/danielmiessler/Personal_AI_Infrastructure)
-- **ETH Zurich** — [Context file research](https://arxiv.org/html/2602.11988v1)
-- **Simon Willison** — [claude-code-transcripts](https://github.com/simonw/claude-code-transcripts)
-- **Anthropic** — Claude Code architecture
+- **Andrej Karpathy**: [LLM Wiki pattern](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)
+- **Rohit Ghumare**: [LLM Wiki v2](https://gist.github.com/rohitg00/2067ab416f7bbe447c1977edaaa681e2) (memory lifecycle)
+- **Michael Tuszynski**: [Context Engineering](https://www.mpt.solutions/context-engineering-is-the-new-prompt-engineering/) (error-to-rule pipeline)
+- **Daniel Miessler**: [Personal AI Infrastructure](https://github.com/danielmiessler/Personal_AI_Infrastructure)
+- **ETH Zurich**: [Context file research](https://arxiv.org/html/2602.11988v1)
+- **Simon Willison**: [claude-code-transcripts](https://github.com/simonw/claude-code-transcripts)
+- **Anthropic**: Claude Code architecture
 
 Full credits: `docs/credits.md`
 
