@@ -1,0 +1,28 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install shellcheck
+        run: sudo apt-get install -y shellcheck
+      - name: Run shellcheck on all shell scripts
+        run: |
+          set -e
+          # archive/ holds the legacy installer (setup.sh.old); skip it.
+          # -x follows sourced files for install.sh's lib/ imports.
+          find . -name '*.sh' -not -path './tests/*' -not -path './archive/*' -print0 | xargs -0 shellcheck -x
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install bats and jq
+        run: sudo apt-get install -y bats jq
+      - name: Run tests
+        run: bats tests/

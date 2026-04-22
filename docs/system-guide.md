@@ -22,6 +22,22 @@ Mind-Lint is a personal knowledge operating system that lives on top of Claude C
 
 ---
 
+## How It's Installed
+
+Mind-Lint uses a **dotfile-style install**. The source repo lives at `~/mindlint/` (or any location you clone it to) and `setup.sh` symlinks framework files into `~/.claude/` where Claude Code looks for them. Your knowledge data (memory, wiki, rules, content) is owned by `~/.claude/` and never touched by upstream updates.
+
+Files are classified into three categories:
+
+| Category | Mechanism | Examples |
+|---|---|---|
+| 1. Framework (symlinked) | Symlink from `~/.claude/X` to `~/mindlint/X` | `commands/*.md`, `scripts/*.sh`, `templates/`, `docs/` |
+| 2. User-editable templates (copied) | Copied once on install; updatable via `--sync` | `rules/workflows.md`, `rules/boundaries.md`, generic skills |
+| 3. User-owned | Wizard-generated or user-accumulated; never touched | `context/*.md`, `memory/`, `wiki/`, `raw/`, `content/`, `rules/preferences.md`, `rules/error-rules.md` |
+
+See `setup.sh --help` for all modes (install / sync / migrate / uninstall / relink).
+
+---
+
 ## The Problem This Solves
 
 Every Claude Code session starts from zero. Without a system, you:
@@ -119,16 +135,16 @@ This is the most important file. Claude Code reads it at the start of every sess
 
 These files are small and universally relevant:
 
-- **identity.md** — Who you are, communication style, working patterns
-- **preferences.md** — Code standards, formatting rules, style preferences
-- **error-rules.md** — Every mistake the AI has ever made, as numbered rules
-- **boundaries.md** — What belongs in Mind-Lint vs. Claude Code's native auto memory
-- **tech-stack.md** — Your languages, frameworks, and tools
-- **active-projects.md** — What you're currently working on
-- **wiki/_index.md** — Lightweight pointer to compiled knowledge (just titles and confidence scores)
-- **learnings/index.md** — Lightweight pointer to learnings
-- **decisions/index.md** — Lightweight pointer to decisions
-- **workflows.md** — Logging triggers and session habits
+- **identity.md**: Who you are, communication style, working patterns
+- **preferences.md**: Code standards, formatting rules, style preferences
+- **error-rules.md**: Every mistake the AI has ever made, as numbered rules
+- **boundaries.md**: What belongs in Mind-Lint vs. Claude Code's native auto memory
+- **tech-stack.md**: Your languages, frameworks, and tools
+- **active-projects.md**: What you're currently working on
+- **wiki/_index.md**: Lightweight pointer to compiled knowledge (just titles and confidence scores)
+- **learnings/index.md**: Lightweight pointer to learnings
+- **decisions/index.md**: Lightweight pointer to decisions
+- **workflows.md**: Logging triggers and session habits
 
 Total base context: ~150 lines. Well within the 150-200 instruction ceiling that research shows AI models can reliably follow.
 
@@ -170,9 +186,9 @@ This is where unprocessed material enters the system. Articles you've read, meet
 This is where per-event knowledge lives. Individual learnings, specific decisions with rationale, and corrections made during sessions.
 
 Each entry follows a template:
-- **Learnings** — what was learned, why it matters, related context
-- **Decisions** — options considered, what was chosen, rationale, consequences, review date
-- **Corrections** — what was wrong, the rule that was created
+- **Learnings**: what was learned, why it matters, related context
+- **Decisions**: options considered, what was chosen, rationale, consequences, review date
+- **Corrections**: what was wrong, the rule that was created
 
 Index files track everything. When the learnings index exceeds 50 entries, `/prune` archives the oldest to keep things scannable.
 
@@ -185,11 +201,11 @@ Index files track everything. When the learnings index exceeds 50 entries, `/pru
 This is the brain. Raw sources and learnings get compiled into structured, cross-linked wiki pages via `/compile`. Instead of re-reading raw documents every time Claude needs information, it reads the wiki: pre-synthesized, confidence-scored, and current.
 
 Each wiki page carries metadata:
-- **Confidence score** (0.1 to 1.0) — based on source count, recency, and contradictions
-- **Decay status** (active / cooling / cold) — based on time since last access
-- **Access count** — how often the page has been referenced
-- **Source list** — which raw sources and learnings support the claims
-- **Supersession log** — when old facts were replaced by newer ones
+- **Confidence score** (0.1 to 1.0): based on source count, recency, and contradictions
+- **Decay status** (active / cooling / cold): based on time since last access
+- **Access count**: how often the page has been referenced
+- **Source list**: which raw sources and learnings support the claims
+- **Supersession log**: when old facts were replaced by newer ones
 
 Confidence strengthens when new sources confirm existing claims. It decays when pages go unaccessed. Old claims get explicitly superseded (marked stale with links to the new claim), not silently overwritten. This is knowledge with a lifecycle, not a static pile of notes.
 
@@ -509,14 +525,14 @@ Then open as an Obsidian vault and install the plugins (Templater, Git, Dataview
 
 Mind-Lint builds on ideas shared openly by others:
 
-- **Andrej Karpathy** — The LLM Wiki pattern (raw → wiki → schema, "stop re-deriving, start compiling")
-- **Rohit Ghumare** — LLM Wiki v2 (confidence scoring, supersession, decay, four-tier memory model, event-driven automation)
-- **Michael Tuszynski** — Error-to-rule pipeline, modular context loading, context-as-code principles
-- **Daniel Miessler** — Personal AI Infrastructure, three-tier memory architecture
-- **ETH Zurich** — Research showing oversized context files hurt performance (shaped the modular loading approach)
-- **Simon Willison** — claude-code-transcripts tool (inspired /mine-sessions)
-- **The Agentic OS community** — Folder-based markdown architecture for AI agent context
-- **Anthropic** — Claude Code's CLAUDE.md, hooks, skills, and slash command architecture
+- **Andrej Karpathy**: The LLM Wiki pattern (raw → wiki → schema, "stop re-deriving, start compiling")
+- **Rohit Ghumare**: LLM Wiki v2 (confidence scoring, supersession, decay, four-tier memory model, event-driven automation)
+- **Michael Tuszynski**: Error-to-rule pipeline, modular context loading, context-as-code principles
+- **Daniel Miessler**: Personal AI Infrastructure, three-tier memory architecture
+- **ETH Zurich**: Research showing oversized context files hurt performance (shaped the modular loading approach)
+- **Simon Willison**: claude-code-transcripts tool (inspired /mine-sessions)
+- **The Agentic OS community**: Folder-based markdown architecture for AI agent context
+- **Anthropic**: Claude Code's CLAUDE.md, hooks, skills, and slash command architecture
 
 Full credits with links: `docs/credits.md`
 

@@ -34,22 +34,22 @@ Same files. Three tools. Zero sync.
 ### The Architecture
 
 Five layers:
-1. **Raw** — immutable source materials (articles, transcripts, notes)
-2. **Memory** — learnings, decisions, and corrections (per-event logs)
-3. **Wiki** — AI-compiled knowledge pages (cross-linked, confidence-scored, self-maintaining)
-4. **Skills & Rules** — reusable workflows and permanent error corrections
-5. **Content** — pipeline from idea to draft to published
+1. **Raw**: immutable source materials (articles, transcripts, notes)
+2. **Memory**: learnings, decisions, and corrections (per-event logs)
+3. **Wiki**: AI-compiled knowledge pages (cross-linked, confidence-scored, self-maintaining)
+4. **Skills & Rules**: reusable workflows and permanent error corrections
+5. **Content**: pipeline from idea to draft to published
 
 ### Key Features
 
-- **Modular context loading** — a lean base loads every session (~150 lines). Additional context loads only when the task calls for it.
-- **Error-to-rule pipeline** — every AI mistake becomes a permanent numbered rule. The system gets smarter when it fails.
-- **Confidence scoring** — wiki pages carry confidence scores based on source count, recency, and contradictions.
-- **Supersession** — new info explicitly marks old claims as stale, not silently overwrites them.
-- **Event-driven automation** — session start shows system health, session end auto-commits, privacy filtering strips sensitive data on ingest.
-- **Content pipeline** — the process of building things IS content. Auto-captures ideas, tracks drafts, publishes to multiple formats.
-- **Knowledge mining** — extract learnings from past Claude Code sessions and Claude.ai chat exports.
-- **14 slash commands** — `/log`, `/compile`, `/lint`, `/search-knowledge`, `/reindex`, `/prune`, `/review-logs`, `/weekly-review`, `/init-project`, `/archive-project`, `/content`, `/publish`, `/mine-sessions`, `/mine-chats`
+- **Modular context loading**: a lean base loads every session (~150 lines). Additional context loads only when the task calls for it.
+- **Error-to-rule pipeline**: every AI mistake becomes a permanent numbered rule. The system gets smarter when it fails.
+- **Confidence scoring**: wiki pages carry confidence scores based on source count, recency, and contradictions.
+- **Supersession**: new info explicitly marks old claims as stale, not silently overwrites them.
+- **Event-driven automation**: session start shows system health, session end auto-commits, privacy filtering strips sensitive data on ingest.
+- **Content pipeline**: the process of building things IS content. Auto-captures ideas, tracks drafts, publishes to multiple formats.
+- **Knowledge mining**: extract learnings from past Claude Code sessions and Claude.ai chat exports.
+- **14 slash commands**: `/log`, `/compile`, `/lint`, `/search-knowledge`, `/reindex`, `/prune`, `/review-logs`, `/weekly-review`, `/init-project`, `/archive-project`, `/content`, `/publish`, `/mine-sessions`, `/mine-chats`
 
 ---
 
@@ -58,27 +58,57 @@ Five layers:
 ### Prerequisites
 - [Claude Code](https://code.claude.com) installed
 - Git installed and configured
-- A GitHub account (for the remote backup repo)
+- `jq` (for settings.json merging): `brew install jq` (macOS) or `apt install jq` (Linux)
+- Mac or Linux (Windows via WSL). Native Windows is not supported.
 
 ### Install
 
 ```bash
-# Clone the repo
-git clone https://github.com/eddiematias/mind-lint.git ~/.claude
+# Clone anywhere you like (not into ~/.claude/)
+git clone https://github.com/eddiematias/mind-lint.git ~/mindlint
 
-# Run the setup script
-cd ~/.claude
-chmod +x setup.sh
-./setup.sh
+# Run setup (safe even on populated ~/.claude/)
+cd ~/mindlint
+bash setup.sh
 ```
 
-The setup script walks you through:
-1. Your name, role, and communication style
-2. Your tech stack
-3. Your clients or brands (optional)
-4. Your active projects
-5. Creating a private GitHub repo for backup
-6. Initializing everything
+The setup script:
+- **Never overwrites** your existing `~/.claude/` data. Uses symlinks for framework files and seeds user-editable templates only if missing.
+- **Interactive wizard** for your name, role, tech stack, and first client (optional).
+- **Collision-safe**: if you already have `~/.claude/commands/lint.md`, you're prompted per-file (diff / rename / skip / overwrite).
+- **Auto-detects** pre-existing Mind-Lint installs and migrates them (with backup to `~/.claude-backup-<timestamp>`).
+
+### Update
+
+```bash
+cd ~/mindlint && git pull && bash setup.sh
+```
+
+`git pull` updates all framework files live (they're symlinks). Re-running `setup.sh` picks up any new commands added upstream. Both are idempotent.
+
+To update user-editable templates (`rules/workflows.md`, `rules/boundaries.md`, generic skills):
+
+```bash
+bash ~/mindlint/setup.sh --sync
+```
+
+Shows per-file diffs and lets you keep yours, take upstream, or manually merge.
+
+### Uninstall
+
+```bash
+bash ~/mindlint/setup.sh --uninstall
+```
+
+Removes Mind-Lint's framework symlinks and `settings.json` entries. Your knowledge data (`memory/`, `wiki/`, `content/`, accumulated rules, etc.) is preserved.
+
+### Repair
+
+If you move `~/mindlint/` to a new location, the symlinks break. To repair:
+
+```bash
+bash <new-path>/setup.sh --relink
+```
 
 ### Post-Install: Obsidian (Optional but Recommended)
 
@@ -180,9 +210,9 @@ Every AI mistake becomes a numbered rule in `rules/error-rules.md`. Rules are pe
 
 ## Documentation
 
-- `docs/system-guide.md` — Complete walkthrough of the entire system
-- `docs/obsidian-setup.md` — Step-by-step Obsidian configuration
-- `docs/credits.md` — Attribution for all ideas and influences
+- `docs/system-guide.md`: Complete walkthrough of the entire system
+- `docs/obsidian-setup.md`: Step-by-step Obsidian configuration
+- `docs/credits.md`: Attribution for all ideas and influences
 
 ---
 
@@ -190,13 +220,13 @@ Every AI mistake becomes a numbered rule in `rules/error-rules.md`. Rules are pe
 
 Mind-Lint builds on ideas shared openly by others:
 
-- **Andrej Karpathy** — [LLM Wiki pattern](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)
-- **Rohit Ghumare** — [LLM Wiki v2](https://gist.github.com/rohitg00/2067ab416f7bbe447c1977edaaa681e2) (memory lifecycle)
-- **Michael Tuszynski** — [Context Engineering](https://www.mpt.solutions/context-engineering-is-the-new-prompt-engineering/) (error-to-rule pipeline)
-- **Daniel Miessler** — [Personal AI Infrastructure](https://github.com/danielmiessler/Personal_AI_Infrastructure)
-- **ETH Zurich** — [Context file research](https://arxiv.org/html/2602.11988v1)
-- **Simon Willison** — [claude-code-transcripts](https://github.com/simonw/claude-code-transcripts)
-- **Anthropic** — Claude Code architecture
+- **Andrej Karpathy**: [LLM Wiki pattern](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)
+- **Rohit Ghumare**: [LLM Wiki v2](https://gist.github.com/rohitg00/2067ab416f7bbe447c1977edaaa681e2) (memory lifecycle)
+- **Michael Tuszynski**: [Context Engineering](https://www.mpt.solutions/context-engineering-is-the-new-prompt-engineering/) (error-to-rule pipeline)
+- **Daniel Miessler**: [Personal AI Infrastructure](https://github.com/danielmiessler/Personal_AI_Infrastructure)
+- **ETH Zurich**: [Context file research](https://arxiv.org/html/2602.11988v1)
+- **Simon Willison**: [claude-code-transcripts](https://github.com/simonw/claude-code-transcripts)
+- **Anthropic**: Claude Code architecture
 
 Full credits: `docs/credits.md`
 
