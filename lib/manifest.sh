@@ -53,7 +53,9 @@ for_each_cat1_per_file() {
     local glob cat sub _tgt
     while IFS='|' read -r glob cat sub _tgt <&3; do
         [[ -z "$glob" || "$glob" =~ ^# ]] && continue
-        [ "$cat" = "1" ] && [ "$sub" = "per-file" ] || continue
+        if [ "$cat" != "1" ] || [ "$sub" != "per-file" ]; then
+            continue
+        fi
         local f
         # shellcheck disable=SC2086  # intentional glob expansion
         for f in "$source_dir"/$glob; do
