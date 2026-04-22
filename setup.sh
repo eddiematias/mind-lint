@@ -14,6 +14,7 @@ while [ $# -gt 0 ]; do
         --sync)              MODE="sync" ;;
         --migrate)           MODE="migrate" ;;
         --uninstall)         MODE="uninstall" ;;
+        --relink)            MODE="relink" ;;
         --non-interactive)   NON_INTERACTIVE="1" ;;
         --skip-wizard)       SKIP_WIZARD="1" ;;
         -h|--help)           MODE="help" ;;
@@ -55,6 +56,21 @@ case "$MODE" in
         source "$SOURCE_ROOT/lib/uninstall.sh"
         uninstall_run
         ;;
+    relink)
+        # shellcheck source=lib/install.sh
+        source "$SOURCE_ROOT/lib/install.sh"
+        # Remove every dangling symlink under $CLAUDE_DIR, then re-run install to recreate.
+        # We intentionally do this BEFORE install_run's lockfile acquisition because
+        # a stale broken symlink in the .mindlint dir could confuse things.
+        if [ -d "$CLAUDE_DIR" ]; then
+            find "$CLAUDE_DIR" -type l 2>/dev/null | while IFS= read -r link; do
+                if [ ! -e "$link" ]; then
+                    rm "$link"
+                fi
+            done
+        fi
+        install_run
+        ;;
     help)
         cat <<EOF
 Mind-Lint installer.
@@ -64,6 +80,7 @@ Usage:
   bash setup.sh --sync         Update user-side templates (three-way merge) [coming soon]
   bash setup.sh --migrate      Migrate from pre-dotfile install [coming soon]
   bash setup.sh --uninstall    Remove framework, keep user data
+  bash setup.sh --relink       Repair broken symlinks after moving the source repo
 
 Flags:
   --non-interactive   Skip interactive collision prompts (tests)

@@ -23,11 +23,20 @@ source "$(dirname "${BASH_SOURCE[0]}")/settings.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/manifest.sh"
 
 install_run() {
+    local lock="$CLAUDE_DIR/.mindlint/install.lock"
+    mkdir -p "$CLAUDE_DIR/.mindlint"
+    if [ -f "$lock" ]; then
+        log_err "Another setup.sh is already running (lockfile $lock exists). If you're sure no other run is in progress, remove the lockfile and retry."
+        exit 1
+    fi
+    touch "$lock"
+    # shellcheck disable=SC2064  # intentional: $lock is captured at trap-time
+    trap "rm -f '$lock'" EXIT
+
     log_step "Installing Mind-Lint"
 
-    mkdir -p "$CLAUDE_DIR/.mindlint"
-
     _install_cat1_per_file
+    _cleanup_dangling_symlinks
     _install_cat1_dir_symlinks
     _install_cat2_templates
     _install_cat3_seeds
@@ -146,7 +155,16 @@ _resolve_cat1_dir_collision() {
         l) find "$dest" -type f >&2; _resolve_cat1_dir_collision "$dir" ;;
         r) mv "$dest" "$dest.user"; ln -s "$SOURCE_ROOT/$dir" "$dest"; log_done "renamed and linked" ;;
         s) log_warn "skipped $dir/" ;;
-        o) rm -rf "$dest"; ln -s "$SOURCE_ROOT/$dir" "$dest"; log_done "overwrote $dir/" ;;
+        o)
+            local backup
+            backup="$dest.backup-$(date +%Y%m%d-%H%M%S)"
+            if [ -e "$backup" ]; then
+                backup="$dest.backup-$(date +%s)"
+            fi
+            mv "$dest" "$backup"
+            ln -s "$SOURCE_ROOT/$dir" "$dest"
+            log_done "backed up yours to $backup and linked ours"
+            ;;
     esac
 }
 
@@ -434,4 +452,30 @@ _install_report() {
     echo "  1. Open Claude Code and try /lint" >&2
     echo "  2. To update later: cd $SOURCE_ROOT && git pull && bash setup.sh" >&2
     echo "  3. To uninstall: bash $SOURCE_ROOT/setup.sh --uninstall" >&2
+}
+
+# Scan for dangling symlinks that point into SOURCE_ROOT and offer to remove them.
+# Called from install_run after category 1 linking, before moving to other install steps.
+# Reads find output on fd 3 so prompt_yn inside the loop still sees the user's stdin.
+_cleanup_dangling_symlinks() {
+    local any_found=0
+    local link
+    while IFS= read -r link <&3; do
+        if [ -L "$link" ] && [ ! -e "$link" ]; then
+            local target
+            target="$(readlink "$link")"
+            if [[ "$target" == "$SOURCE_ROOT"/* ]]; then
+                any_found=1
+                if [ "${NON_INTERACTIVE:-}" = "1" ]; then
+                    log_warn "dangling symlink $link (source gone), skipping cleanup in non-interactive mode"
+                    continue
+                fi
+                if prompt_yn "Symlink $link points to missing file. Remove?" n; then
+                    rm "$link"
+                    log_done "removed dangling $link"
+                fi
+            fi
+        fi
+    done 3< <(find "$CLAUDE_DIR" -type l 2>/dev/null)
+    [ $any_found -eq 0 ] || log_info "dangling symlink check complete"
 }
