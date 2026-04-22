@@ -44,11 +44,14 @@ target_for() {
 # Iterate every file that matches a category 1 per-file entry.
 # Usage: for_each_cat1_per_file <source-root> <callback-function-name>
 # The callback is invoked with the absolute path to each matching file.
+#
+# Reads the manifest on fd 3 (not stdin) so callbacks can still read from
+# the user's stdin (e.g., prompt_menu inside a collision handler).
 for_each_cat1_per_file() {
     local source_dir="$1"
     local callback="$2"
     local glob cat sub _tgt
-    while IFS='|' read -r glob cat sub _tgt; do
+    while IFS='|' read -r glob cat sub _tgt <&3; do
         [[ -z "$glob" || "$glob" =~ ^# ]] && continue
         [ "$cat" = "1" ] && [ "$sub" = "per-file" ] || continue
         local f
@@ -57,7 +60,7 @@ for_each_cat1_per_file() {
             [ -e "$f" ] || continue
             "$callback" "$f"
         done
-    done < "$MANIFEST_PATH"
+    done 3< "$MANIFEST_PATH"
 }
 
 # Iterate every manifest entry matching the given filters.
@@ -65,15 +68,18 @@ for_each_cat1_per_file() {
 #   <cat-filter>: "1", "2", "3", or "" (any)
 #   <sub-filter>: "per-file", "dir", "copy", "seed", "claude-md", or "" (any)
 #   callback receives: glob cat sub tgt
+#
+# Reads the manifest on fd 3 (not stdin) so callbacks can still read from
+# the user's stdin (e.g., prompt_menu inside a conflict handler).
 for_each_manifest_entry() {
     local cat_filter="$1"
     local sub_filter="$2"
     local callback="$3"
     local glob cat sub tgt
-    while IFS='|' read -r glob cat sub tgt; do
+    while IFS='|' read -r glob cat sub tgt <&3; do
         [[ -z "$glob" || "$glob" =~ ^# ]] && continue
         if [ -n "$cat_filter" ] && [ "$cat" != "$cat_filter" ]; then continue; fi
         if [ -n "$sub_filter" ] && [ "$sub" != "$sub_filter" ]; then continue; fi
         "$callback" "$glob" "$cat" "$sub" "$tgt"
-    done < "$MANIFEST_PATH"
+    done 3< "$MANIFEST_PATH"
 }

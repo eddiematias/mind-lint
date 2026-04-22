@@ -41,7 +41,12 @@ case "$MODE" in
         source "$SOURCE_ROOT/lib/install.sh"
         install_run
         ;;
-    sync|migrate|uninstall)
+    sync)
+        # shellcheck source=lib/sync.sh
+        source "$SOURCE_ROOT/lib/sync.sh"
+        sync_run
+        ;;
+    migrate|uninstall)
         echo "Mode '$MODE' not implemented yet (will be added in later tasks)" >&2
         exit 1
         ;;
