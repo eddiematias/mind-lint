@@ -112,14 +112,18 @@ EOF
 
 @test "install is idempotent when re-run with no changes" {
     run_setup --non-interactive --skip-wizard
-    local first_tree
-    first_tree="$(find "$FAKE_HOME/.claude" -type f -o -type l | sort | xargs shasum -a 256 2>/dev/null | shasum -a 256 | cut -d' ' -f1)"
+    # Snapshot both file contents (via shasum, which follows symlinks to their targets)
+    # AND symlink target strings (via readlink). Each captures a different dimension:
+    # file hash catches content changes, readlink catches target-pointer changes.
+    local first_tree first_links
+    first_tree="$(find "$FAKE_HOME/.claude" -type f | sort | xargs shasum -a 256 2>/dev/null | shasum -a 256 | cut -d' ' -f1)"
+    first_links="$(find "$FAKE_HOME/.claude" -type l | sort | while read -r l; do echo "$l -> $(readlink "$l")"; done | shasum -a 256 | cut -d' ' -f1)"
     run_setup --non-interactive --skip-wizard
-    local second_tree
-    second_tree="$(find "$FAKE_HOME/.claude" -type f -o -type l | sort | xargs shasum -a 256 2>/dev/null | shasum -a 256 | cut -d' ' -f1)"
-    # The installed-version is regenerated each run (SHA from git), so exclude it.
-    # Actually since both runs use the same repo state the SHA is identical. Hashes should match.
+    local second_tree second_links
+    second_tree="$(find "$FAKE_HOME/.claude" -type f | sort | xargs shasum -a 256 2>/dev/null | shasum -a 256 | cut -d' ' -f1)"
+    second_links="$(find "$FAKE_HOME/.claude" -type l | sort | while read -r l; do echo "$l -> $(readlink "$l")"; done | shasum -a 256 | cut -d' ' -f1)"
     [ "$first_tree" = "$second_tree" ]
+    [ "$first_links" = "$second_links" ]
 }
 
 @test "install skips cat1 collisions in non-interactive mode and reports" {
