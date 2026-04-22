@@ -24,16 +24,15 @@ done
 
 export SOURCE_ROOT CLAUDE_DIR NON_INTERACTIVE SKIP_WIZARD
 
-# Auto-route pre-dotfile installs to migrate mode. Skipped for now since
-# lib/migrate.sh is written in Task 11.
-# TODO (Task 11): uncomment after migrate.sh exists
-# if [ "$MODE" = "install" ]; then
-#     source "$SOURCE_ROOT/lib/detect.sh"
-#     state="$(detect_state "$CLAUDE_DIR")"
-#     if [ "$state" = "pre-dotfile" ]; then
-#         MODE="migrate"
-#     fi
-# fi
+# Auto-route pre-dotfile installs to migrate mode.
+if [ "$MODE" = "install" ]; then
+    # shellcheck source=lib/detect.sh
+    source "$SOURCE_ROOT/lib/detect.sh"
+    state="$(detect_state "$CLAUDE_DIR")"
+    if [ "$state" = "pre-dotfile" ]; then
+        MODE="migrate"
+    fi
+fi
 
 case "$MODE" in
     install)
@@ -46,7 +45,12 @@ case "$MODE" in
         source "$SOURCE_ROOT/lib/sync.sh"
         sync_run
         ;;
-    migrate|uninstall)
+    migrate)
+        # shellcheck source=lib/migrate.sh
+        source "$SOURCE_ROOT/lib/migrate.sh"
+        migrate_run
+        ;;
+    uninstall)
         echo "Mode '$MODE' not implemented yet (will be added in later tasks)" >&2
         exit 1
         ;;
