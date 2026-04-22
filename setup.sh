@@ -51,8 +51,9 @@ case "$MODE" in
         migrate_run
         ;;
     uninstall)
-        echo "Mode '$MODE' not implemented yet (will be added in later tasks)" >&2
-        exit 1
+        # shellcheck source=lib/uninstall.sh
+        source "$SOURCE_ROOT/lib/uninstall.sh"
+        uninstall_run
         ;;
     help)
         cat <<EOF
@@ -62,7 +63,7 @@ Usage:
   bash setup.sh                Install or re-sync (idempotent)
   bash setup.sh --sync         Update user-side templates (three-way merge) [coming soon]
   bash setup.sh --migrate      Migrate from pre-dotfile install [coming soon]
-  bash setup.sh --uninstall    Remove framework, keep user data [coming soon]
+  bash setup.sh --uninstall    Remove framework, keep user data
 
 Flags:
   --non-interactive   Skip interactive collision prompts (tests)
