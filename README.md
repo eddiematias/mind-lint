@@ -58,27 +58,57 @@ Five layers:
 ### Prerequisites
 - [Claude Code](https://code.claude.com) installed
 - Git installed and configured
-- A GitHub account (for the remote backup repo)
+- `jq` (for settings.json merging): `brew install jq` (macOS) or `apt install jq` (Linux)
+- Mac or Linux (Windows via WSL). Native Windows is not supported.
 
 ### Install
 
 ```bash
-# Clone the repo
-git clone https://github.com/eddiematias/mind-lint.git ~/.claude
+# Clone anywhere you like (not into ~/.claude/)
+git clone https://github.com/eddiematias/mind-lint.git ~/mindlint
 
-# Run the setup script
-cd ~/.claude
-chmod +x setup.sh
-./setup.sh
+# Run setup (safe even on populated ~/.claude/)
+cd ~/mindlint
+bash setup.sh
 ```
 
-The setup script walks you through:
-1. Your name, role, and communication style
-2. Your tech stack
-3. Your clients or brands (optional)
-4. Your active projects
-5. Creating a private GitHub repo for backup
-6. Initializing everything
+The setup script:
+- **Never overwrites** your existing `~/.claude/` data. Uses symlinks for framework files and seeds user-editable templates only if missing.
+- **Interactive wizard** for your name, role, tech stack, and first client (optional).
+- **Collision-safe**: if you already have `~/.claude/commands/lint.md`, you're prompted per-file (diff / rename / skip / overwrite).
+- **Auto-detects** pre-existing Mind-Lint installs and migrates them (with backup to `~/.claude-backup-<timestamp>`).
+
+### Update
+
+```bash
+cd ~/mindlint && git pull && bash setup.sh
+```
+
+`git pull` updates all framework files live (they're symlinks). Re-running `setup.sh` picks up any new commands added upstream. Both are idempotent.
+
+To update user-editable templates (`rules/workflows.md`, `rules/boundaries.md`, generic skills):
+
+```bash
+bash ~/mindlint/setup.sh --sync
+```
+
+Shows per-file diffs and lets you keep yours, take upstream, or manually merge.
+
+### Uninstall
+
+```bash
+bash ~/mindlint/setup.sh --uninstall
+```
+
+Removes Mind-Lint's framework symlinks and `settings.json` entries. Your knowledge data (`memory/`, `wiki/`, `content/`, accumulated rules, etc.) is preserved.
+
+### Repair
+
+If you move `~/mindlint/` to a new location, the symlinks break. To repair:
+
+```bash
+bash <new-path>/setup.sh --relink
+```
 
 ### Post-Install: Obsidian (Optional but Recommended)
 

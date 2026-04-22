@@ -48,6 +48,12 @@ Mind-Lint draws on ideas, research, and open-source work from the following peop
 ### Vinzent03 — Obsidian Git Plugin
 - **Source:** [obsidian-git](https://github.com/Vinzent03/obsidian-git)
 
+### Testing and Tooling
+
+- **[bats-core](https://github.com/bats-core/bats-core)** - Bash Automated Testing System. Test framework for the install/sync/migrate/uninstall modes.
+- **[shellcheck](https://www.shellcheck.net/)** - static analysis for shell scripts. Catches common bugs (unquoted variables, `read` without `-r`, etc.) in CI.
+- **[jq](https://jqlang.github.io/jq/)** - command-line JSON processor. Used by `lib/settings.sh` to safely merge Mind-Lint hooks and permissions into `~/.claude/settings.json` without clobbering user additions.
+
 ---
 
 If you build on Mind-Lint, please credit the contributors above. They shared their work openly.

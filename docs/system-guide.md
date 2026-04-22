@@ -22,6 +22,22 @@ Mind-Lint is a personal knowledge operating system that lives on top of Claude C
 
 ---
 
+## How It's Installed
+
+Mind-Lint uses a **dotfile-style install**. The source repo lives at `~/mindlint/` (or any location you clone it to) and `setup.sh` symlinks framework files into `~/.claude/` where Claude Code looks for them. Your knowledge data (memory, wiki, rules, content) is owned by `~/.claude/` and never touched by upstream updates.
+
+Files are classified into three categories:
+
+| Category | Mechanism | Examples |
+|---|---|---|
+| 1. Framework (symlinked) | Symlink from `~/.claude/X` to `~/mindlint/X` | `commands/*.md`, `scripts/*.sh`, `templates/`, `docs/` |
+| 2. User-editable templates (copied) | Copied once on install; updatable via `--sync` | `rules/workflows.md`, `rules/boundaries.md`, generic skills |
+| 3. User-owned | Wizard-generated or user-accumulated; never touched | `context/*.md`, `memory/`, `wiki/`, `raw/`, `content/`, `rules/preferences.md`, `rules/error-rules.md` |
+
+See `setup.sh --help` for all modes (install / sync / migrate / uninstall / relink).
+
+---
+
 ## The Problem This Solves
 
 Every Claude Code session starts from zero. Without a system, you:
