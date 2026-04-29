@@ -12,6 +12,7 @@ Run /reindex to sync all indexes with actual directory contents.
 - Broken [[cross-references]] → remove link, log removal
 - Missing Supersession Log or Entities sections → add empty sections
 - raw/_index.md entries for deleted files → remove entries
+- **Topic-tags-in-frontmatter anti-pattern:** for any learning entry, scan the frontmatter `tags:` array for items whose name matches a file in `memory/learnings/` or `wiki/` (e.g. `frontend` matches `memory/learnings/frontend.md`). Move those items out of `tags:` and into the body's `## Topics` section as `[[wikilinks]]`. Why: Obsidian renders frontmatter tags as filter labels and `[[wikilinks]]` as graph nodes; topic terms in `tags:` break graph navigation.
 
 ## Phase 2: Confidence Recalculation
 For every wiki page, recalculate confidence:

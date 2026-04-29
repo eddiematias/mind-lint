@@ -11,8 +11,12 @@ When the user corrects Claude's output:
 ### Learnings
 When a new technique, gotcha, or pattern is discovered:
 1. Create entry in `memory/learnings/` using the learning template format
-2. Update `memory/learnings/index.md`
-3. If significant, offer to compile into wiki via /compile
+2. Populate the `## Topics` section with `[[wikilinks]]` to category notes that exist as files in `memory/learnings/` or `wiki/` (e.g. `[[frontend]]`, `[[backend]]`, `[[ai-workflows]]`)
+3. Set the frontmatter `tags:` array to cross-cutting attributes that don't have their own page (e.g. `prompting`, `payload-cms`, `nextjs`, `migration`, `scope`)
+4. Update `memory/learnings/index.md`
+5. If significant, offer to compile into wiki via /compile
+
+**Topics vs Tags (the rule):** Obsidian's graph view treats `[[wikilinks]]` as graph edges (clickable nodes that open the topic file and show backlinks) and treats tags (frontmatter or inline) as filter-pane labels (no graph node, clicking opens the Tags pane instead of a topic note). Use Topics for terms that have a corresponding note; use Tags for cross-cutting attributes that don't. Putting topic terms in `tags:` silently breaks graph navigation. `/lint` Phase 1 auto-fixes this drift.
 
 ### Decisions
 When a meaningful choice is made (architecture, tool selection, approach):
