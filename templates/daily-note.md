@@ -9,7 +9,9 @@ type: daily-note
 
 ## Calendar
 
-<!-- Auto-populated by daily-note.sh at 10:30 AM. Live calendar queries available via Apple EventKit MCP and Anthropic Google Workspace connector during chat. -->
+<!-- AUTO-CALENDAR-START -->
+<!-- Populated by daily-note.sh at note creation via AppleScript on Calendar.app. Live calendar queries available via Apple EventKit MCP and Anthropic Google Workspace connector during chat. -->
+<!-- AUTO-CALENDAR-END -->
 
 ## Plan
 
