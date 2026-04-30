@@ -65,8 +65,12 @@ echo "[daily-note] Created $NOTE_PATH"
 # this function returns gracefully with a hint to grant access in
 # System Settings → Privacy & Security → Automation.
 
-EVENTS=$(osascript <<'APPLESCRIPT' 2>/dev/null || echo ""
+# Personal/family calendars come from Calendar.app via AppleScript.
+PERSONAL_EVENTS=$(osascript <<'APPLESCRIPT' 2>/dev/null || echo ""
 on run
+    -- Calendars to skip (auto-generated noise sources, not user-curated content).
+    set excluded_calendars to {"Scheduled Reminders", "Siri Suggestions"}
+
     set today_start to current date
     set hours of today_start to 0
     set minutes of today_start to 0
@@ -78,82 +82,96 @@ on run
     tell application "Calendar"
         set cals to every calendar
         repeat with cal in cals
-            try
-                set events_today to (every event of cal whose start date is greater than or equal to today_start and start date is less than today_end)
-                repeat with evt in events_today
-                    set evt_summary to summary of evt
-                    set evt_start to start date of evt
-                    set evt_allday to allday event of evt
-                    set cal_name to title of cal
-                    if evt_allday then
-                        set time_str to "All day"
-                    else
-                        set hh to hours of evt_start
-                        set mm to minutes of evt_start
-                        if hh < 12 then
-                            set ampm to "AM"
-                            if hh is 0 then set hh to 12
+            set cal_name to title of cal
+            if excluded_calendars does not contain cal_name then
+                try
+                    set events_today to (every event of cal whose start date is greater than or equal to today_start and start date is less than today_end)
+                    repeat with evt in events_today
+                        set evt_summary to summary of evt
+                        set evt_start to start date of evt
+                        set evt_allday to allday event of evt
+                        if evt_allday then
+                            set time_str to "All day"
                         else
-                            set ampm to "PM"
-                            if hh > 12 then set hh to hh - 12
+                            set hh to hours of evt_start
+                            set mm to minutes of evt_start
+                            if hh < 12 then
+                                set ampm to "AM"
+                                if hh is 0 then set hh to 12
+                            else
+                                set ampm to "PM"
+                                if hh > 12 then set hh to hh - 12
+                            end if
+                            set mm_str to mm as string
+                            if (count of mm_str) is 1 then set mm_str to "0" & mm_str
+                            set time_str to (hh as string) & ":" & mm_str & " " & ampm
                         end if
-                        set mm_str to mm as string
-                        if (count of mm_str) is 1 then set mm_str to "0" & mm_str
-                        set time_str to (hh as string) & ":" & mm_str & " " & ampm
-                    end if
-                    set output to output & "- **" & time_str & "** — " & evt_summary & " _(" & cal_name & ")_" & linefeed
-                end repeat
-            on error
-                -- skip calendars that error (e.g., ones still loading)
-            end try
+                        set output to output & "- **" & time_str & "** — " & evt_summary & " _(" & cal_name & ")_" & linefeed
+                    end repeat
+                on error
+                    -- skip calendars that error (e.g., ones still loading)
+                end try
+            end if
         end repeat
     end tell
 
-    if output is "" then
-        return "_No events today._"
-    end if
     return output
 end run
 APPLESCRIPT
 )
 
+# Work calendar comes from the Anthropic Google Workspace connector via `claude -p`.
+# This requires the connector to be enabled in Claude Code Settings → Connectors.
+# Graceful degrade: if the connector is unavailable or claude CLI fails, we just
+# skip work events and the daily note shows personal events only.
+GOOGLE_PROMPT='Use the Google Workspace connector to list my Google Calendar events for today only.
+
+Output format (strict, no preamble, no commentary):
+- One line per event, starting with "- **TIME** — SUMMARY _(CALENDAR_NAME)_"
+- Use 12-hour time (e.g., "10:00 AM"). For all-day events, use "All day" instead of time.
+- Sort events chronologically.
+- If there are no events today, output exactly: NO_EVENTS
+- If you cannot access Google Calendar (connector not enabled, auth failed, etc.), output exactly: CONNECTOR_UNAVAILABLE
+- Output nothing else. No headers, no closing remarks.'
+
+# Run claude with a 60-second timeout. Use Haiku for speed/cost.
+WORK_RAW=""
+if command -v claude >/dev/null 2>&1; then
+    WORK_RAW=$(echo "$GOOGLE_PROMPT" | timeout 60 claude -p --model claude-haiku-4-5-20251001 2>/dev/null || echo "")
+fi
+
+# Filter to only the bullet lines (drop any preamble or commentary the model added).
+WORK_EVENTS=""
+if [ -n "$WORK_RAW" ] && ! echo "$WORK_RAW" | grep -q "CONNECTOR_UNAVAILABLE\|NO_EVENTS"; then
+    WORK_EVENTS=$(echo "$WORK_RAW" | grep '^- \*\*' || echo "")
+fi
+
+# Combine personal + work events. If both empty, show "no events" message.
+if [ -n "$PERSONAL_EVENTS" ] && [ -n "$WORK_EVENTS" ]; then
+    EVENTS=$(printf '%s\n%s' "$PERSONAL_EVENTS" "$WORK_EVENTS")
+elif [ -n "$PERSONAL_EVENTS" ]; then
+    EVENTS="$PERSONAL_EVENTS"
+elif [ -n "$WORK_EVENTS" ]; then
+    EVENTS="$WORK_EVENTS"
+else
+    EVENTS="_No events today._"
+fi
+
 # Inject events into the AUTO-CALENDAR sentinel block.
 # Use awk for reliable multi-line replacement (sed on macOS is awkward with newlines).
-if [ -n "$EVENTS" ]; then
-    EVENTS_CONTENT="$EVENTS" awk '
-        BEGIN { in_block = 0 }
-        /<!-- AUTO-CALENDAR-START -->/ {
-            print
-            print ENVIRON["EVENTS_CONTENT"]
-            in_block = 1
-            next
-        }
-        /<!-- AUTO-CALENDAR-END -->/ {
-            in_block = 0
-            print
-            next
-        }
-        !in_block { print }
-    ' "$NOTE_PATH" > "$NOTE_PATH.tmp" && mv "$NOTE_PATH.tmp" "$NOTE_PATH"
-    echo "[daily-note] Calendar populated"
-else
-    # AppleScript failed (likely automation permission not granted).
-    # Replace sentinel content with an actionable hint instead of leaving placeholder.
-    HINT="_Calendar unavailable. Grant AppleScript automation permission for Calendar.app in System Settings → Privacy & Security → Automation, then re-run \`bash ~/.claude/scripts/daily-note.sh\` after deleting this file._"
-    HINT_CONTENT="$HINT" awk '
-        BEGIN { in_block = 0 }
-        /<!-- AUTO-CALENDAR-START -->/ {
-            print
-            print ENVIRON["HINT_CONTENT"]
-            in_block = 1
-            next
-        }
-        /<!-- AUTO-CALENDAR-END -->/ {
-            in_block = 0
-            print
-            next
-        }
-        !in_block { print }
-    ' "$NOTE_PATH" > "$NOTE_PATH.tmp" && mv "$NOTE_PATH.tmp" "$NOTE_PATH"
-    echo "[daily-note] Calendar unavailable, placeholder hint inserted" >&2
-fi
+EVENTS_CONTENT="$EVENTS" awk '
+    BEGIN { in_block = 0 }
+    /<!-- AUTO-CALENDAR-START -->/ {
+        print
+        print ENVIRON["EVENTS_CONTENT"]
+        in_block = 1
+        next
+    }
+    /<!-- AUTO-CALENDAR-END -->/ {
+        in_block = 0
+        print
+        next
+    }
+    !in_block { print }
+' "$NOTE_PATH" > "$NOTE_PATH.tmp" && mv "$NOTE_PATH.tmp" "$NOTE_PATH"
+echo "[daily-note] Calendar populated"
