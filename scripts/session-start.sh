@@ -5,6 +5,12 @@
 
 CLAUDE_DIR="$HOME/.claude"
 
+# SessionStart backup for the daily note: if launchd missed (machine asleep, traveling),
+# create today's note now. Idempotent — exits early if note exists.
+if [ -x "$CLAUDE_DIR/scripts/daily-note.sh" ]; then
+    bash "$CLAUDE_DIR/scripts/daily-note.sh" >/dev/null 2>&1 || true
+fi
+
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  Mind-Lint v2 — Session Status"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

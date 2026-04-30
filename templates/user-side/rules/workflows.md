@@ -1,6 +1,30 @@
 # Workflows
 
+## Daily Notes Layer (read-only substrate)
+
+Daily notes live in `journal/YYYY-MM/YYYY-MM-DD.md`. They are the temporal/episodic substrate, complementing the project-knowledge layer (`memory/`, `wiki/`, `rules/`).
+
+**Structure** (per `templates/daily-note.md`):
+- `## Calendar` — auto-populated by `scripts/daily-note.sh` at 10:30 AM (or your configured time) via macOS Calendar APIs.
+- `## Plan` — populated by `/today`.
+- `## Notes` — free-form prose, the daily writing canvas. Inline `#idea` tags and `[[wikilinks]]`.
+- `## Tasks` — free-form, your shape.
+- `## Review` — populated by `/close-day` at end of day. The agent-owned section.
+
+**The agent-doesn't-write rule (load-bearing).** Agents read `journal/` for context but do not write into it. The single exception: `/close-day` writes into today's note's `## Review` section. No other command (including `/today`, which writes to `## Plan`, and `/graduate`, which writes nothing) modifies anything outside this convention.
+
+**Why this rule exists.** Pattern-detection commands (`/drift`, `/trace`, `/connect`, `/ideas`, `/emerge`, `/ghost`, `/challenge`, etc.) only produce useful signal on uncontaminated human input. If the agent paraphrases its own summaries back into the vault, future pattern detection picks up agent compressions instead of authentic thinking. The exception is narrow and conventional (a structured `## Review` section the agent owns by name) so the rule stays unambiguous. Pattern from Vin's vault-as-thinking-partner approach (see references for the 2026-02-23 podcast with Greg Isenberg).
+
+**Triggers for daily note creation:**
+- launchd at your configured time (template: `templates/com.example.mindlint-daily.plist.template`).
+- SessionStart hook backup (creates today's note if launchd missed because the machine was asleep).
+- Manual: `bash scripts/daily-note.sh` or Obsidian's "Open today's daily note" button.
+
+**Promotion path from journal to project knowledge:** `/graduate` (human-gated review surfaces candidates, user decides what to promote and writes it). Or conversational capture (mention an insight in a session, the existing `/log` flow fires).
+
 ## Auto-Logging (Always Active)
+
+The following auto-logging applies to the **project-knowledge** layer (`memory/`, `wiki/`, `rules/`), not the daily-notes substrate. Daily notes follow the read-only rule above.
 
 ### Preference Corrections
 When the user corrects Claude's output:

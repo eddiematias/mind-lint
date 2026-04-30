@@ -33,12 +33,13 @@ Same files. Three tools. Zero sync.
 
 ### The Architecture
 
-Five layers:
+Six layers:
 1. **Raw**: immutable source materials (articles, transcripts, notes)
 2. **Memory**: learnings, decisions, and corrections (per-event logs)
 3. **Wiki**: AI-compiled knowledge pages (cross-linked, confidence-scored, self-maintaining)
 4. **Skills & Rules**: reusable workflows and permanent error corrections
 5. **Content**: pipeline from idea to draft to published
+6. **Daily notes (read-only substrate)**: temporal/episodic content (`journal/YYYY-MM/YYYY-MM-DD.md`) plus calendar feeds. Agents read but do not write into the journal (one narrow exception: `/close-day` writes to today's `## Review` section). Pattern-detection commands read this substrate and produce outputs to chat or to user-gated capture flows.
 
 ### Key Features
 
@@ -49,7 +50,8 @@ Five layers:
 - **Event-driven automation**: session start shows system health, session end auto-commits, privacy filtering strips sensitive data on ingest.
 - **Content pipeline**: the process of building things IS content. Auto-captures ideas, tracks drafts, publishes to multiple formats.
 - **Knowledge mining**: extract learnings from past Claude Code sessions and Claude.ai chat exports.
-- **14 slash commands**: `/log`, `/compile`, `/lint`, `/search-knowledge`, `/reindex`, `/prune`, `/review-logs`, `/weekly-review`, `/init-project`, `/archive-project`, `/content`, `/publish`, `/mine-sessions`, `/mine-chats`
+- **Daily notes + calendar substrate**: optional life-OS layer. Daily notes auto-created at a configured time (default 10:30 AM via launchd), with calendar events from Apple Calendar and Google Calendar surfaced into the note. `/today` produces a morning plan, `/close-day` writes an EOD review, `/graduate` surfaces journal-tagged ideas for human-gated promotion. Future pattern-detection commands (`/drift`, `/trace`, `/connect`, etc.) operate on the accumulated substrate.
+- **17 slash commands**: `/log`, `/compile`, `/lint`, `/search-knowledge`, `/reindex`, `/prune`, `/review-logs`, `/weekly-review`, `/init-project`, `/archive-project`, `/content`, `/publish`, `/mine-sessions`, `/mine-chats`, `/today`, `/close-day`, `/graduate`
 
 ---
 

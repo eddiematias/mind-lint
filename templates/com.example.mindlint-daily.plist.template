@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+Mind-Lint daily-note creator (launchd template)
+
+To install on macOS:
+  1. Replace REPLACE_USERNAME with your macOS username (or just edit the absolute paths below).
+  2. Copy this file to ~/Library/LaunchAgents/com.YOUR-NAME.mindlint-daily.plist
+     (replace YOUR-NAME with something specific to you, e.g. com.alice.mindlint-daily.plist).
+  3. Update the Label key to match the filename you chose.
+  4. Load it: launchctl load -w ~/Library/LaunchAgents/com.YOUR-NAME.mindlint-daily.plist
+  5. Verify: launchctl list | grep mindlint
+
+To uninstall:
+  launchctl unload -w ~/Library/LaunchAgents/com.YOUR-NAME.mindlint-daily.plist
+
+Default fire time is 10:30 AM. Adjust the StartCalendarInterval values to your preferred time.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.YOUR-NAME.mindlint-daily</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/REPLACE_USERNAME/.claude/scripts/daily-note.sh</string>
+    </array>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>10</integer>
+        <key>Minute</key>
+        <integer>30</integer>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/Users/REPLACE_USERNAME/.claude/scripts/daily-note.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/REPLACE_USERNAME/.claude/scripts/daily-note.error.log</string>
+
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>
