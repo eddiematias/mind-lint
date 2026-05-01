@@ -21,13 +21,15 @@ JOURNAL_DIR="$CLAUDE_DIR/journal"
 
 # Date components for the note.
 TODAY=$(date +%Y-%m-%d)
-YEAR_MONTH=$(date +%Y-%m)
 YESTERDAY=$(date -v-1d +%Y-%m-%d 2>/dev/null || date -d "yesterday" +%Y-%m-%d)
 TOMORROW=$(date -v+1d +%Y-%m-%d 2>/dev/null || date -d "tomorrow" +%Y-%m-%d)
 DATE_LONG=$(date +"%A, %B %-d, %Y")
 
-NOTE_DIR="$JOURNAL_DIR/$YEAR_MONTH"
-NOTE_PATH="$NOTE_DIR/$TODAY.md"
+# Flat layout: journal/YYYY-MM-DD.md. Matches Obsidian's core Daily Notes plugin
+# default (no date-based subfolders without the Periodic Notes plugin). Wikilinks
+# like [[2026-04-29|← Yesterday]] resolve by basename across the vault, so flat
+# layout doesn't break navigation.
+NOTE_PATH="$JOURNAL_DIR/$TODAY.md"
 
 # Idempotence: exit early if today's note already exists.
 if [ -f "$NOTE_PATH" ]; then
@@ -41,8 +43,8 @@ if [ ! -f "$TEMPLATE" ]; then
     exit 1
 fi
 
-# Create the year-month directory if needed.
-mkdir -p "$NOTE_DIR"
+# Create the journal directory if needed.
+mkdir -p "$JOURNAL_DIR"
 
 # Render the template by substituting Templater-style date patterns.
 # This way the same template works for both this script and Obsidian's Templater plugin.
