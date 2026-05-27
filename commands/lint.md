@@ -6,6 +6,17 @@ Full health check with confidence recalculation, decay management, and self-heal
 ## Phase 0: Reindex
 Run /reindex to sync all indexes with actual directory contents.
 
+## Phase 0.5: Context Budget Audit
+The always-loaded layer (everything CLAUDE.md pulls in via @imports) is what every session pays for before any work starts. The phases below check whether knowledge is fresh and true; this one checks the orthogonal axis: how much it costs to keep in context. The goal is to catch bloat here, not via an external "memory is large" warning.
+
+1. Parse CLAUDE.md for every @import; estimate tokens as bytes / 4 (`wc -c` / 4); sum to a total.
+2. Report:
+   - Total always-loaded budget vs ceilings: target <= 25K tokens, warn >= 35K (tunable).
+   - Per-file offenders: any single always-loaded file over 3K tokens (candidates to trim or move on-demand).
+   - Index entries that aren't one-liners: scan the "Recent" sections of memory/learnings/index.md and memory/decisions/index.md; flag any bullet that spans multiple lines or exceeds ~300 chars. Each should be a one-line pointer; detail belongs in the linked file.
+   - Eager-import footgun: flag any @path under a heading containing "Modular" or "Load When Relevant". Those should be on-demand pointers (no leading @); an @ there forces eager load every session, defeating the intent.
+3. Report + recommend only (trimming is a judgment call). Route trims through Phase 5, or point to /prune for the indexes.
+
 ## Phase 1: Auto-Fix (no confirmation needed)
 - Index files out of sync → fix indexes
 - Wiki pages missing frontmatter fields → add defaults
@@ -40,4 +51,4 @@ Cross-reference wiki pages for conflicts. Propose resolutions based on source re
 - Cold wiki pages → suggest refresh, archive, or leave
 
 ## Phase 6: Report
-Auto-fixes applied, confidence changes, decay summary, contradictions, issues needing input, health score, stats. Append to wiki/_log.md.
+Auto-fixes applied, confidence changes, decay summary, contradictions, issues needing input, health score, context budget (always-loaded total vs 25K target, from Phase 0.5), stats. Append to wiki/_log.md.

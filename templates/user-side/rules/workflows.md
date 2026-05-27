@@ -11,7 +11,7 @@ Daily notes live in `journal/YYYY-MM/YYYY-MM-DD.md`. They are the temporal/episo
 - `## Tasks` — free-form, your shape.
 - `## Review` — populated by `/close-day` at end of day. The agent-owned section.
 
-**The agent-doesn't-write rule (load-bearing).** Agents read `journal/` for context but do not write into it. The single exception: `/close-day` writes into today's note's `## Review` section. No other command (including `/today`, which writes to `## Plan`, and `/graduate`, which writes nothing) modifies anything outside this convention.
+**The agent-doesn't-write rule (load-bearing).** `## Notes` and `## Tasks` are pure-human substrate; agents never write into them. The two agent-owned exceptions are structural and command-named: `/today` writes `## Plan`; `/close-day` writes `## Review`. `## Calendar` is populated by the deterministic `scripts/daily-note.sh`, not by an agent. No other command (`/graduate`, future pattern-detection commands) writes into `journal/` at all — their outputs go to chat or user-gated capture flows.
 
 **Why this rule exists.** Pattern-detection commands (`/drift`, `/trace`, `/connect`, `/ideas`, `/emerge`, `/ghost`, `/challenge`, etc.) only produce useful signal on uncontaminated human input. If the agent paraphrases its own summaries back into the vault, future pattern detection picks up agent compressions instead of authentic thinking. The exception is narrow and conventional (a structured `## Review` section the agent owns by name) so the rule stays unambiguous. Pattern from Vin's vault-as-thinking-partner approach (see references for the 2026-02-23 podcast with Greg Isenberg).
 
@@ -37,15 +37,15 @@ When a new technique, gotcha, or pattern is discovered:
 1. Create entry in `memory/learnings/` using the learning template format
 2. Populate the `## Topics` section with `[[wikilinks]]` to category notes that exist as files in `memory/learnings/` or `wiki/` (e.g. `[[frontend]]`, `[[backend]]`, `[[ai-workflows]]`)
 3. Set the frontmatter `tags:` array to cross-cutting attributes that don't have their own page (e.g. `prompting`, `payload-cms`, `nextjs`, `migration`, `scope`)
-4. Update `memory/learnings/index.md`
+4. Add a **one-line pointer only** to `memory/learnings/index.md` (`- [YYYY-MM-DD] **Title** (project) [category.md](category.md)`, no em dashes). The full entry lives in the category file, never inline in the index.
 5. If significant, offer to compile into wiki via /compile
 
 **Topics vs Tags (the rule):** Obsidian's graph view treats `[[wikilinks]]` as graph edges (clickable nodes that open the topic file and show backlinks) and treats tags (frontmatter or inline) as filter-pane labels (no graph node, clicking opens the Tags pane instead of a topic note). Use Topics for terms that have a corresponding note; use Tags for cross-cutting attributes that don't. Putting topic terms in `tags:` silently breaks graph navigation. `/lint` Phase 1 auto-fixes this drift.
 
 ### Decisions
 When a meaningful choice is made (architecture, tool selection, approach):
-1. Create file in `memory/decisions/` using the decision template format
-2. Update `memory/decisions/index.md`
+1. Create file in `memory/decisions/` using the decision template format (full Context / Options / Decision / Consequences)
+2. Add a **one-line pointer only** to `memory/decisions/index.md` (`- [YYYY-MM-DD] **Title** (project, type) [doc](YYYY-MM-DD-short-topic.md)`, no em dashes). The dated file is the store; the index never carries the prose.
 
 ## Manual Triggers
 
@@ -60,7 +60,7 @@ When a meaningful choice is made (architecture, tool selection, approach):
 
 ### On Session Start
 - session-start.sh runs automatically
-- Shows: uncompiled sources count, content pipeline status, days since last lint, cold wiki pages, error rules count
+- Shows: uncompiled sources count, content pipeline status, days since last lint, cold wiki pages, error rules count, always-loaded context budget
 
 ### On Session End
 - auto-commit.sh runs automatically
@@ -81,7 +81,9 @@ When a meaningful choice is made (architecture, tool selection, approach):
 - /archive-project creates a structured digest of the completed project
 - Digest becomes a wiki page and a content pipeline entry
 
-## Index Maintenance
-- Learnings index hard cap: 50 entries
-- When index exceeds 50, Claude suggests running /prune
-- /prune archives oldest entries to archive/old-learnings/, keeps 30 most recent
+## Index Maintenance (context-budget discipline)
+Both `memory/learnings/index.md` and `memory/decisions/index.md` are imported into every session via CLAUDE.md. They are pointers, not stores; the full detail lives elsewhere (learnings in the category file, decisions in the dated file). Two rules keep them lean:
+- **One line per entry.** Never a paragraph. This is the bigger cost driver: a paragraph-per-entry index balloons even under the count cap. Auto-logging writes one-liners; never re-expand them inline.
+- **Cap: 50 recent entries per index.** When "Recent" exceeds 50, /prune moves the oldest one-liners out. Learnings → `archive/old-learnings/`; decisions → `memory/decisions/_archive-index.md` (the dated file stays). /prune runs both passes (format + count) across both indexes.
+
+**The always-loaded budget.** The whole CLAUDE.md import chain targets ~25K tokens. Keep indexes one-line, and keep reference material under "Modular Context" as on-demand pointers with NO leading `@` (an `@` there forces eager load every session). `/lint` Phase 0.5 audits the budget; the SessionStart hook prints it.

@@ -56,5 +56,25 @@ if [ -f "$CLAUDE_DIR/rules/error-rules.md" ]; then
     echo "📏 $RULES error rule(s) active"
 fi
 
+# Context budget: estimate tokens loaded by CLAUDE.md @imports (bytes/4).
+# Lean always-on context keeps sessions fast. Target 25k, warn at 35k.
+# Full audit lives in /lint Phase 0.5; trim with /prune.
+if [ -f "$CLAUDE_DIR/CLAUDE.md" ]; then
+    BUDGET_BYTES=0
+    while IFS= read -r imp; do
+        f="$CLAUDE_DIR/${imp#@}"
+        [ -f "$f" ] && BUDGET_BYTES=$((BUDGET_BYTES + $(wc -c < "$f")))
+    done < <(grep -oE '^@[^[:space:]]+' "$CLAUDE_DIR/CLAUDE.md")
+    BUDGET_TOK=$((BUDGET_BYTES / 4))
+    BUDGET_K=$((BUDGET_TOK / 1000))
+    if [ "$BUDGET_TOK" -ge 35000 ]; then
+        echo "📊 Context budget: ~${BUDGET_K}k tokens (ceiling 25k), WARN: run /lint then /prune"
+    elif [ "$BUDGET_TOK" -ge 25000 ]; then
+        echo "📊 Context budget: ~${BUDGET_K}k tokens (over 25k target), consider /prune"
+    else
+        echo "📊 Context budget: ~${BUDGET_K}k tokens (within 25k target)"
+    fi
+fi
+
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""

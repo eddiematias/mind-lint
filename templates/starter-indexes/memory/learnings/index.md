@@ -11,9 +11,10 @@ This is the master index of everything we've learned across all projects. Each e
 
 ## Recent Entries
 
-<!-- AUTO-UPDATED: New entries get added here. Keep under 50 lines; move older to category files. -->
+<!-- AUTO-UPDATED: one line per entry (date, bold title, project, category link). Full detail lives in the category file, never inline here. Keep under 50 entries; /prune archives older ones (context-budget discipline). -->
 
 ## How This Works
 
-- Entries are auto-logged as you work (see workflows.md for triggers).
+- Entries are auto-logged as you work (see workflows.md for triggers). The full entry goes into the category file; **this index carries only a one-line pointer per entry.**
+- Keep this under 50 one-line entries; `/prune` archives older ones to their category files.
 - Say "log this" to manually add an entry.
