@@ -517,18 +517,24 @@ Going forward, Mind-Lint captures knowledge in real-time (auto-logging handles m
 
 ## Version Control
 
-The entire system is a Git repo pushed to a private GitHub remote.
+Mind-Lint has two layers with separate version-control stories:
 
-**Auto-commit** fires on every Claude Code session end. Zero manual git work.
+- **Framework** (commands, scripts, templates, docs): comes from this public repo. You do not commit it from `~/.claude`; `setup.sh` symlinks it in from your clone. Update with `cd ~/mindlint && git pull && bash setup.sh`.
+- **Your content** (memory, wiki, journal, rules, context): yours. Make `~/.claude` a git repo with your own private remote and the **auto-commit** hook pushes your accumulated knowledge on every session end. Zero manual git work.
 
 **New machine setup:**
-```
-git clone https://github.com/eddiematias/mind-lint.git ~/.claude
+```bash
+# 1. Install the framework (never clone into ~/.claude itself)
+git clone https://github.com/eddiematias/mind-lint.git ~/mindlint
+cd ~/mindlint && bash setup.sh
+
+# 2. Restore your content by pulling your own private content remote
+#    into ~/.claude/ (memory, wiki, journal, rules, context).
 ```
 
-Then open as an Obsidian vault and install the plugins (Templater, Git, Dataview, QuickAdd, Calendar).
+Then open `~/.claude` as an Obsidian vault and install the plugins (Templater, Git, Dataview, QuickAdd, Calendar).
 
-**What gets committed:** All markdown, scripts, commands, templates, essential Obsidian config.
+**What you back up (to your own private remote):** your markdown knowledge, plus any custom commands or scripts you add alongside the framework.
 
 **What stays local:** Obsidian workspace state, plugin data caches, Claude Code's native auto memory.
 
