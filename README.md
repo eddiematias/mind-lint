@@ -17,7 +17,7 @@ Mind-Lint turns your `~/.claude/` directory into a persistent knowledge layer th
 - **Everything you've learned** across all projects
 - **Every decision you've made** and why
 
-It also gives you a wiki that compiles and cross-links your knowledge, a content pipeline that turns your work into blog posts and social threads, and 14 slash commands for managing all of it.
+It also gives you a wiki that compiles and cross-links your knowledge, a content pipeline that turns your work into blog posts and social threads, and 19 slash commands for managing all of it.
 
 ## How It Works
 
@@ -50,8 +50,9 @@ Six layers:
 - **Event-driven automation**: session start shows system health, session end auto-commits, privacy filtering strips sensitive data on ingest.
 - **Content pipeline**: the process of building things IS content. Auto-captures ideas, tracks drafts, publishes to multiple formats.
 - **Knowledge mining**: extract learnings from past Claude Code sessions and Claude.ai chat exports.
-- **Daily notes + calendar substrate**: optional life-OS layer. Daily notes auto-created at a configured time (default 10:30 AM via launchd), with calendar events from Apple Calendar and Google Calendar surfaced into the note. `/today` produces a morning plan, `/close-day` writes an EOD review, `/graduate` surfaces journal-tagged ideas for human-gated promotion. Future pattern-detection commands (`/drift`, `/trace`, `/connect`, etc.) operate on the accumulated substrate.
-- **17 slash commands**: `/log`, `/compile`, `/lint`, `/search-knowledge`, `/reindex`, `/prune`, `/review-logs`, `/weekly-review`, `/init-project`, `/archive-project`, `/content`, `/publish`, `/mine-sessions`, `/mine-chats`, `/today`, `/close-day`, `/graduate`
+- **Daily notes + calendar substrate**: optional life-OS layer. Daily notes are created on demand (or by the session-start hook), and `/today` surfaces calendar events from Apple Calendar and Google Calendar into the note alongside a morning plan. `/close-day` writes an EOD review, `/graduate` surfaces journal-tagged ideas for human-gated promotion, `/sync-goals` syncs goal reflections. Future pattern-detection commands (`/drift`, `/trace`, `/connect`, etc.) operate on the accumulated substrate.
+- **People profiles**: optional relationship-context layer. `/people-sync` syncs iMessage threads into per-person profiles, honoring a human-authored-only rule for the relational sections.
+- **19 slash commands**: `/log`, `/compile`, `/lint`, `/search-knowledge`, `/reindex`, `/prune`, `/review-logs`, `/weekly-review`, `/init-project`, `/archive-project`, `/content`, `/publish`, `/mine-sessions`, `/mine-chats`, `/today`, `/close-day`, `/graduate`, `/sync-goals`, `/people-sync`
 
 ---
 
@@ -166,8 +167,21 @@ Open Claude Code in any project. You should see the session-start status display
 ### Knowledge Mining
 | Command | What It Does |
 |---|---|
-| `/mine-sessions` | Extract knowledge from past Claude Code sessions |
-| `/mine-chats` | Extract knowledge from exported Claude.ai conversations |
+| `/mine-sessions` | Extract learnings, decisions, and corrections from past Claude Code session transcripts |
+| `/mine-chats` | Extract knowledge from exported Claude.ai chat transcripts |
+
+### Daily Notes
+| Command | What It Does |
+|---|---|
+| `/today` | Morning plan from calendar, recent notes, and active projects |
+| `/close-day` | End-of-day review written into today's note |
+| `/graduate` | Surface journal-tagged ideas for human-gated promotion to project knowledge |
+| `/sync-goals` | Sync daily-note goal reflections into `context/goals.md` |
+
+### People
+| Command | What It Does |
+|---|---|
+| `/people-sync` | Sync iMessage threads into a person's profile (relational sections stay human-authored) |
 
 ---
 
