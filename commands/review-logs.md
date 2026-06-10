@@ -1,10 +1,13 @@
-# /review-logs — Review Recent Captures
+The user wants to see what's been captured recently. Do the following:
 
-See everything captured recently across learnings, decisions, and corrections.
+1. Read ~/.claude/memory/learnings/index.md and show the "Recent Entries" section
+2. Read ~/.claude/memory/decisions/index.md and show the "Recent Decisions" section
+3. Read the "Things the user Has Corrected" section from ~/.claude/rules/preferences.md
+4. Read ~/.claude/memory/corrections/index.md for recent corrections
 
-## Steps
-1. Read memory/learnings/index.md — show entries from the last 7 days
-2. Read memory/decisions/index.md — show entries from the last 7 days
-3. Read memory/corrections/index.md — show recent corrections
-4. Read rules/error-rules.md — show recently added rules
-5. Offer options: edit an entry, compile to wiki, or done
+Present a clean summary organized by type (Learnings, Decisions, Corrections) with dates. If any section is empty, say so.
+
+At the end, ask if the user wants to:
+- Edit or remove any entries
+- Compile any entries into wiki pages via /compile
+- Create content from any of these entries

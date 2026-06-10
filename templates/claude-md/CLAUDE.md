@@ -28,6 +28,7 @@
 # and bloats the always-on context budget. Read the listed file only when its trigger applies.
 # Code work → also load skills/code-review.md
 # Content creation → also load skills/content-creation.md + content/_pipeline.md
+# People profiles / reading-list / chat-mining / archival / privacy / content-creation detail → also load rules/workflows-reference.md
 
 ## Workflows
 @rules/workflows.md

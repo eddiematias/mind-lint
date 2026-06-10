@@ -16,7 +16,7 @@ Mind-Lint is a personal knowledge operating system that lives on top of Claude C
 - Modular context loading so you're not burning tokens on irrelevant context every session
 - Event-driven automation (session start shows system status, session end auto-commits, privacy filtering on ingest)
 - A content pipeline baked in (the process of building things IS the content)
-- 14 slash commands for everything from logging to linting to publishing
+- 19 slash commands for everything from logging to linting to publishing
 
 **The stack:** Claude Code + Obsidian + Git + markdown. No databases, no APIs, no vendor lock-in. Works offline. Grep-searchable. Diff-friendly. Portable to any AI tool that reads markdown.
 
@@ -118,7 +118,7 @@ Everything lives in `~/.claude/`, which serves triple duty:
 │
 ├── archive/                     ← Historical (not loaded)
 ├── templates/                   ← Obsidian templates
-├── commands/                    ← 14 slash commands
+├── commands/                    ← 19 slash commands
 ├── scripts/                     ← Automation scripts
 └── docs/
     ├── system-guide.md
@@ -337,7 +337,7 @@ When you create files in Claude Code (via `/log`), the file and index update tog
 
 ---
 
-## All 14 Slash Commands
+## All 19 Slash Commands
 
 ### Knowledge Management
 | Command | What It Does |
@@ -372,6 +372,19 @@ When you create files in Claude Code (via `/log`), the file and index update tog
 |---|---|
 | `/mine-sessions` | Extract knowledge from past Claude Code session transcripts |
 | `/mine-chats` | Extract knowledge from exported Claude.ai conversations |
+
+### Daily Notes
+| Command | What It Does |
+|---|---|
+| `/today` | Morning plan from calendar, recent notes, and active projects |
+| `/close-day` | End-of-day review written into today's note |
+| `/graduate` | Surface journal-tagged ideas for human-gated promotion to project knowledge |
+| `/sync-goals` | Sync daily-note goal reflections into `context/goals.md` |
+
+### People
+| Command | What It Does |
+|---|---|
+| `/people-sync` | Sync iMessage threads into a person's profile (relational sections stay human-authored) |
 
 ---
 
@@ -504,18 +517,24 @@ Going forward, Mind-Lint captures knowledge in real-time (auto-logging handles m
 
 ## Version Control
 
-The entire system is a Git repo pushed to a private GitHub remote.
+Mind-Lint has two layers with separate version-control stories:
 
-**Auto-commit** fires on every Claude Code session end. Zero manual git work.
+- **Framework** (commands, scripts, templates, docs): comes from this public repo. You do not commit it from `~/.claude`; `setup.sh` symlinks it in from your clone. Update with `cd ~/mindlint && git pull && bash setup.sh`.
+- **Your content** (memory, wiki, journal, rules, context): yours. Make `~/.claude` a git repo with your own private remote and the **auto-commit** hook pushes your accumulated knowledge on every session end. Zero manual git work.
 
 **New machine setup:**
-```
-git clone https://github.com/eddiematias/mind-lint.git ~/.claude
+```bash
+# 1. Install the framework (never clone into ~/.claude itself)
+git clone https://github.com/eddiematias/mind-lint.git ~/mindlint
+cd ~/mindlint && bash setup.sh
+
+# 2. Restore your content by pulling your own private content remote
+#    into ~/.claude/ (memory, wiki, journal, rules, context).
 ```
 
-Then open as an Obsidian vault and install the plugins (Templater, Git, Dataview, QuickAdd, Calendar).
+Then open `~/.claude` as an Obsidian vault and install the plugins (Templater, Git, Dataview, QuickAdd, Calendar).
 
-**What gets committed:** All markdown, scripts, commands, templates, essential Obsidian config.
+**What you back up (to your own private remote):** your markdown knowledge, plus any custom commands or scripts you add alongside the framework.
 
 **What stays local:** Obsidian workspace state, plugin data caches, Claude Code's native auto memory.
 

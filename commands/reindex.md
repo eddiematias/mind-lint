@@ -1,11 +1,27 @@
 # /reindex — Update All Index Files
 
-Scan directories and update index files to match what actually exists. Run after editing in Obsidian or when indexes feel stale.
+Scan directories and update index files to match what actually exists. Run this when files have been created outside of Claude Code (e.g., via Obsidian) or when indexes feel stale.
 
 ## Steps
-1. Scan memory/learnings/ — add missing entries to index, flag stale entries
-2. Scan memory/decisions/ — add missing entries to index, flag stale entries
-3. Scan raw/ subdirectories — add missing entries to raw/_index.md, flag stale entries
-4. Scan wiki/ — add missing entries to wiki/_index.md, flag stale entries
-5. Scan content/ideas/ and content/drafts/ — flag files not in _pipeline.md
-6. Report: indexes updated, entries added, stale entries flagged
+
+1. Scan memory/learnings/ for all .md files except index.md
+   - Compare against memory/learnings/index.md
+   - Add any missing entries to the index
+   - Flag any index entries pointing to files that no longer exist
+
+2. Scan memory/decisions/ for all .md files except index.md
+   - Compare against memory/decisions/index.md
+   - Add any missing entries to the index
+   - Flag any index entries pointing to files that no longer exist
+
+3. Scan raw/notes/, raw/articles/, raw/transcripts/, raw/research/ for all .md files
+   - Compare against raw/_index.md
+   - Add any missing entries
+   - Flag any stale entries
+
+4. Scan wiki/ for all .md files except _index.md and _log.md
+   - Compare against wiki/_index.md
+   - Add any missing entries
+   - Flag any stale entries
+
+5. Report what was added, what was flagged, and confirm all indexes are current.

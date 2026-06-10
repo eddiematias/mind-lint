@@ -99,8 +99,8 @@ setup() {
     local collected=()
     _collect() { collected+=("$1"); }
     for_each_manifest_entry "2" "" _collect
-    # Should be exactly 4 cat-2 entries (workflows, boundaries, code-review, content-creation)
-    [ "${#collected[@]}" -eq 4 ]
+    # Should be exactly 5 cat-2 entries (workflows, workflows-reference, boundaries, code-review, content-creation)
+    [ "${#collected[@]}" -eq 5 ]
 }
 
 @test "for_each_manifest_entry filters by subtype" {

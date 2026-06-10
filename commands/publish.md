@@ -1,12 +1,24 @@
-# /publish — Export Content to Platform
+# /publish — Export Content to External Platform
 
-Export finished content to its target platform.
+Export a finished or in-progress content piece to its target platform.
 
 ## Steps
-1. Show items from content/_pipeline.md "In Progress"
-2. If empty, show Ideas and offer to develop one
-3. Ask destination: blog (markdown), LinkedIn (1300 char), social thread (numbered tweets), video script (talking points), Notion page, or multiple
-4. Load skills/content-creation.md for format guidelines
-5. Generate formatted output
-6. Present for review
-7. After approval: copy to content/published/, update _pipeline.md with URL and date
+
+1. Read content/_pipeline.md
+2. Show items from "In Progress" table. If empty, show "Ideas" and offer to develop one first.
+3. Ask: "Where should this go?" Options:
+   - Notion page (requires Notion MCP connection)
+   - Blog post (output as formatted markdown, ready for CMS)
+   - LinkedIn post (formatted for LinkedIn, show character count)
+   - Social thread (output as numbered tweets)
+   - Video script (output as talking points with screen recording notes)
+   - Multiple formats (generate several from the same source)
+4. Load skills/content-creation.md for format-specific guidelines
+5. Generate the formatted output for selected platform(s)
+6. Present to the user for review and edits
+7. After approval:
+   - If not already there, copy final version to content/published/
+   - Update content/_pipeline.md:
+     - Move from "In Progress" to "Published" table
+     - Add published URL (if applicable) and date
+8. Ask if the user wants to capture any learnings from the content creation process

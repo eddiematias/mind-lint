@@ -1,24 +1,38 @@
-# /log — Manual Knowledge Logging
+The user wants to log something. Ask what type of entry this is:
 
-Log a learning, decision, or preference manually.
+1. **Learning** - A technique, pattern, gotcha, or insight discovered during this session
+2. **Decision** - A meaningful choice that was made (architecture, tooling, approach, strategy)
+3. **Preference/Correction** - A correction to how Claude should behave, or a new preference to remember
 
-## Steps
-1. Ask: "What type? (learning, decision, or preference)"
-2. Based on type:
-   - **Learning**: Ask for context, the learning, and why it matters. Write to memory/learnings/ using templates/learning.md format. Populate the `## Topics` section with `[[wikilinks]]` to category notes (see "Topics vs Tags" below). Set the frontmatter `tags:` field to cross-cutting attributes only. Update memory/learnings/index.md.
-   - **Decision**: Ask for context, options considered, what was chosen, and why. Write to memory/decisions/ using templates/decision.md format. Update memory/decisions/index.md.
-   - **Preference**: Ask what the preference is. Append to rules/preferences.md.
-3. After logging, offer to compile into wiki if the entry is significant.
-4. Confirm what was written and where.
+Based on the type:
 
-## Topics vs Tags (do not skip this classification step for Learnings)
+### If Learning:
+- Ask which category it fits: frontend, backend, ai-workflows, devops, mobile, business-strategy, design, collaboration-tools, or a new category
+- Write the entry to the appropriate file in ~/.claude/memory/learnings/ using this format:
+  ```
+  ### [TODAY'S DATE] Short Title
+  **Project:** current project name (or "general")
+  **Context:** What we were doing when we learned this
+  **Learning:** The actual insight
+  **Topics:** [[category]] [[other-category-if-applicable]]
+  **Tags:** #subcategory #cross-cutting-attribute
+  ```
+- **Topics vs Tags (do not skip this classification step):**
+  - **Topics** are `[[wikilinks]]` to topic notes that exist as files in `memory/learnings/` or `wiki/`. The chosen category file always belongs in Topics (e.g. an entry filed in `frontend.md` gets `[[frontend]]`). Add additional topic links if the learning genuinely spans multiple topic files.
+  - **Tags** are `#hashtag`-syntax cross-cutting attributes that do NOT have their own page. Examples: `#prompting`, `#claude-code`, `#architecture`, `#performance`, `#testing`, `#security`, `#migration`, `#mcp`.
+  - Why this matters: Obsidian's graph view treats `[[wikilinks]]` as graph edges (clickable, navigable, surface backlinks) and treats `#tags` as filter-pane labels (no graph node). Putting topic terms in Tags breaks graph navigation. See error rule #10.
+- Add a one-line summary to ~/.claude/memory/learnings/index.md under "Recent Entries"
+- If the learning is significant, offer to compile it into a wiki page via /compile
 
-Obsidian models tags and wikilinks as different objects:
-- **`[[wikilinks]]`** in the body become graph edges. Clicking a topic node in the graph view opens the linked note and shows backlinks from every entry that links to it.
-- **`#tags`** (in frontmatter or inline) drive the Tags pane (filter view). They are not graph nodes; clicking a tag in the graph opens the Tags pane, not the topic note.
+### If Decision:
+- Create a new file in ~/.claude/memory/decisions/ named with today's date and a short topic slug
+- Use the decision template format with Context, Options Considered, Decision, and Consequences
+- Add a one-line summary to ~/.claude/memory/decisions/index.md
 
-The rule for choosing:
-- If the term has a corresponding note (e.g. there's a `frontend.md` in `memory/learnings/` or a `frontend-craft-patterns.md` in `wiki/`), use a wikilink in the `## Topics` section.
-- If the term is a cross-cutting attribute that doesn't have its own page (e.g. `#prompting`, `#payload-cms`, `#nextjs`, `#scope`, `#migration`), put it in the frontmatter `tags:` field.
+### If Preference/Correction:
+- Add a dated entry to ~/.claude/rules/preferences.md under "Things the user Has Corrected"
+- Format: `- [TODAY'S DATE] Correction: "what was wrong" → Rule: "what to do going forward"`
+- Add a numbered rule to ~/.claude/rules/error-rules.md
+- Log the correction to ~/.claude/memory/corrections/index.md
 
-Putting topic terms into `tags:` (instead of `## Topics` wikilinks) silently breaks graph navigation. The graph will show an isolated tag node with no link to the corresponding topic note.
+After logging, confirm what was written and where.
