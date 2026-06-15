@@ -13,12 +13,14 @@
 
 ## Active Context (Always Loaded)
 @context/active-projects.md
+@context/goals.md
 
 ## Knowledge Indexes (Always Loaded, Lightweight)
 # "Lightweight" is enforced, not aspirational: keep these one line per entry (full detail
 # lives in the linked file). /lint Phase 0.5 audits the always-loaded budget (~25K target),
 # /prune keeps the indexes one-line. See rules/workflows.md "Memory Index Maintenance".
 @wiki/_index.md
+@wiki/people/_index.md
 @memory/learnings/index.md
 @memory/decisions/index.md
 
