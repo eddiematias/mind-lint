@@ -18,10 +18,10 @@ superseded_by: []
 [2-3 sentence overview]
 
 ## Key Points
-[Bullet points of the most important facts/insights]
+[Bullet points of the most important facts/insights. Each claim should note its confidence if it differs from the page-level score.]
 
 ## Entities
-[Key people, projects, tools, concepts. Format: [Type] Name — description]
+[Key people, projects, tools, concepts mentioned on this page. Format: [Type] Name — description]
 
 ## Related Pages
 [Links to related wiki pages]
@@ -30,6 +30,7 @@ superseded_by: []
 [Things unclear or needing more research]
 
 ## Supersession Log
+[When facts on this page are superseded by newer information, log it here:]
 | Date | Old Claim | New Claim | Source | Confidence |
 |---|---|---|---|---|
 
