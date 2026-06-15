@@ -65,8 +65,8 @@ setup() {
 
 @test "install adds session-start and session-end hooks" {
     run_setup --non-interactive --skip-wizard
-    jq -e '.hooks.SessionStart[0].command | contains("session-start.sh")' "$FAKE_HOME/.claude/settings.json"
-    jq -e '.hooks.SessionEnd[0].command | contains("auto-commit.sh")' "$FAKE_HOME/.claude/settings.json"
+    jq -e '.hooks.SessionStart[0].hooks[0].command | contains("session-start.sh")' "$FAKE_HOME/.claude/settings.json"
+    jq -e '.hooks.SessionEnd[0].hooks[0].command | contains("auto-commit.sh")' "$FAKE_HOME/.claude/settings.json"
 }
 
 @test "install adds all 14 Mind-Lint permissions" {
@@ -91,8 +91,8 @@ EOF
     run_setup --non-interactive --skip-wizard
     # User hook still there
     jq -e '.hooks.SessionStart[] | select(.command == "bash ~/user-own.sh")' "$FAKE_HOME/.claude/settings.json"
-    # Mind-Lint hook added
-    jq -e '.hooks.SessionStart[] | select(.command | contains("session-start.sh"))' "$FAKE_HOME/.claude/settings.json"
+    # Mind-Lint hook added (nested shape)
+    jq -e '[.hooks.SessionStart[] | (.command // (.hooks[]?.command))] | any(contains("session-start.sh"))' "$FAKE_HOME/.claude/settings.json"
     # User permission still there
     jq -e '.permissions.allow | index("Bash(npm:*)")' "$FAKE_HOME/.claude/settings.json"
 }

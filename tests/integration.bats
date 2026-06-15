@@ -75,6 +75,6 @@ EOF
     run_setup --non-interactive --skip-wizard
     # The recorded hook command should use ~/.claude/ (portable) when CLAUDE_DIR is the default
     local cmd
-    cmd="$(jq -r '.hooks.SessionStart[0].command' "$FAKE_HOME/.claude/settings.json")"
+    cmd="$(jq -r '.hooks.SessionStart[0].hooks[0].command' "$FAKE_HOME/.claude/settings.json")"
     [[ "$cmd" == "bash ~/.claude/scripts/session-start.sh" ]]
 }

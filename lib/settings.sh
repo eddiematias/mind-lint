@@ -25,9 +25,11 @@ add_hook() {
     jq --arg event "$event" --arg cmd "$command" '
         .hooks //= {} |
         .hooks[$event] //= [] |
-        if ([.hooks[$event][] | select(.command == $cmd)] | length) > 0
+        # Claude Code requires each entry to be {hooks: [{type, command}]} (matcher optional).
+        # Dedupe against both that nested shape and any legacy flat {type, command} entries.
+        if ([.hooks[$event][]? | select((.command == $cmd) or any((.hooks // [])[]?; .command == $cmd))] | length) > 0
         then .
-        else .hooks[$event] += [{type: "command", command: $cmd}]
+        else .hooks[$event] += [{hooks: [{type: "command", command: $cmd}]}]
         end
     ' "$file" > "$tmp" && mv "$tmp" "$file"
 }
@@ -42,7 +44,14 @@ remove_hook() {
     tmp="$(mktemp)"
     jq --arg event "$event" --arg cmd "$command" '
         if .hooks[$event] then
-            .hooks[$event] |= map(select(.command != $cmd))
+            # For nested {hooks:[...]} entries, drop the matching command and remove the entry
+            # if its hooks list becomes empty. For legacy flat {type,command} entries, drop the
+            # entry only if its top-level command matches. Other user entries are preserved.
+            .hooks[$event] |= [
+                .[]
+                | if (.hooks | type) == "array" then .hooks |= [.[] | select(.command != $cmd)] else . end
+                | select(if (.hooks | type) == "array" then (.hooks | length) > 0 else (.command != $cmd) end)
+            ]
         else . end
     ' "$file" > "$tmp" && mv "$tmp" "$file"
 }

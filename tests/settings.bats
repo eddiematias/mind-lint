@@ -12,7 +12,16 @@ setup() {
 @test "add_hook creates settings.json if missing" {
     add_hook "$SETTINGS" "SessionStart" "bash ~/.claude/scripts/session-start.sh"
     [ -f "$SETTINGS" ]
-    jq -e '.hooks.SessionStart[0].command == "bash ~/.claude/scripts/session-start.sh"' "$SETTINGS"
+    jq -e '.hooks.SessionStart[0].hooks[0].command == "bash ~/.claude/scripts/session-start.sh"' "$SETTINGS"
+}
+
+@test "add_hook writes the Claude Code hook shape (entry has a hooks array, not a flat command)" {
+    # Regression guard: Claude Code rejects flat {type, command} entries with
+    # "hooks: Expected array, but received undefined". Each entry must nest its
+    # command in a hooks array.
+    add_hook "$SETTINGS" "SessionStart" "bash ~/.claude/scripts/session-start.sh"
+    jq -e '.hooks.SessionStart[0].hooks | type == "array"' "$SETTINGS"
+    jq -e '.hooks.SessionStart[0] | has("command") | not' "$SETTINGS"
 }
 
 @test "add_hook is idempotent (dedupe by command string)" {
@@ -38,7 +47,7 @@ EOF
     count="$(jq '.hooks.SessionStart | length' "$SETTINGS")"
     [ "$count" = "2" ]
     jq -e '.hooks.SessionStart[] | select(.command == "bash ~/my-own-hook.sh")' "$SETTINGS"
-    jq -e '.hooks.SessionStart[] | select(.command == "bash ~/.claude/scripts/session-start.sh")' "$SETTINGS"
+    jq -e '[.hooks.SessionStart[] | (.command // (.hooks[]?.command))] | index("bash ~/.claude/scripts/session-start.sh")' "$SETTINGS"
 }
 
 @test "add_permission creates allow array if missing" {
@@ -75,7 +84,7 @@ EOF
     local count
     count="$(jq '.hooks.SessionStart | length' "$SETTINGS")"
     [ "$count" = "1" ]
-    jq -e '.hooks.SessionStart[0].command == "bash ~/own.sh"' "$SETTINGS"
+    jq -e '.hooks.SessionStart[0].hooks[0].command == "bash ~/own.sh"' "$SETTINGS"
 }
 
 @test "remove_permission removes only matching entry" {
