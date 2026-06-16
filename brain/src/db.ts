@@ -1,0 +1,101 @@
+import { PGlite } from '@electric-sql/pglite'
+import { vector } from '@electric-sql/pglite/vector'
+import type { Chunk } from './types.js'
+
+export async function openDb(path: string): Promise<PGlite> {
+  return path ? new PGlite(path, { extensions: { vector } }) : new PGlite({ extensions: { vector } })
+}
+
+export async function initSchema(db: PGlite, dims: number): Promise<void> {
+  await db.exec(`CREATE EXTENSION IF NOT EXISTS vector;`)
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS files (
+      path TEXT PRIMARY KEY,
+      file_hash TEXT NOT NULL,
+      last_indexed TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS chunks (
+      id TEXT PRIMARY KEY,
+      source_path TEXT NOT NULL,
+      chunk_index INT NOT NULL,
+      content TEXT NOT NULL,
+      metadata JSONB,
+      embedding vector(${dims}),
+      tsv tsvector GENERATED ALWAYS AS (to_tsvector('english', content)) STORED,
+      content_hash TEXT,
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS chunks_tsv_idx ON chunks USING GIN (tsv);
+    CREATE INDEX IF NOT EXISTS chunks_source_idx ON chunks (source_path);
+  `)
+}
+
+function toVectorLiteral(v: number[]): string {
+  return `[${v.join(',')}]`
+}
+
+export async function upsertChunk(db: PGlite, c: Chunk, embedding: number[]): Promise<void> {
+  await db.query(
+    `INSERT INTO chunks (id, source_path, chunk_index, content, metadata, embedding, content_hash)
+     VALUES ($1, $2, $3, $4, $5, $6::vector, $7)
+     ON CONFLICT (id) DO UPDATE SET
+       content = EXCLUDED.content, metadata = EXCLUDED.metadata,
+       embedding = EXCLUDED.embedding, content_hash = EXCLUDED.content_hash`,
+    [c.id, c.sourcePath, c.chunkIndex, c.content, JSON.stringify(c.metadata), toVectorLiteral(embedding), c.contentHash],
+  )
+}
+
+interface Row { id: string; source_path: string; content: string; metadata: Record<string, unknown> }
+
+export async function vectorSearch(db: PGlite, queryVec: number[], limit: number): Promise<Row[]> {
+  const res = await db.query<Row>(
+    `SELECT id, source_path, content, metadata FROM chunks
+     ORDER BY embedding <=> $1::vector LIMIT $2`,
+    [toVectorLiteral(queryVec), limit],
+  )
+  return res.rows
+}
+
+export async function keywordSearch(db: PGlite, query: string, limit: number): Promise<Row[]> {
+  const res = await db.query<Row>(
+    `SELECT id, source_path, content, metadata,
+            ts_rank(tsv, plainto_tsquery('english', $1)) AS rank
+     FROM chunks
+     WHERE tsv @@ plainto_tsquery('english', $1)
+     ORDER BY rank DESC LIMIT $2`,
+    [query, limit],
+  )
+  return res.rows
+}
+
+export async function getFileHash(db: PGlite, path: string): Promise<string | null> {
+  const res = await db.query<{ file_hash: string }>(`SELECT file_hash FROM files WHERE path = $1`, [path])
+  return res.rows[0]?.file_hash ?? null
+}
+
+export async function setFileHash(db: PGlite, path: string, hash: string): Promise<void> {
+  await db.query(
+    `INSERT INTO files (path, file_hash, last_indexed) VALUES ($1, $2, now())
+     ON CONFLICT (path) DO UPDATE SET file_hash = EXCLUDED.file_hash, last_indexed = now()`,
+    [path, hash],
+  )
+}
+
+export async function deleteFileChunks(db: PGlite, path: string): Promise<void> {
+  await db.query(`DELETE FROM chunks WHERE source_path = $1`, [path])
+  await db.query(`DELETE FROM files WHERE path = $1`, [path])
+}
+
+export async function listIndexedPaths(db: PGlite): Promise<string[]> {
+  const res = await db.query<{ path: string }>(`SELECT path FROM files`)
+  return res.rows.map((r) => r.path)
+}
+
+export async function getChunkContents(db: PGlite, ids: string[]): Promise<Row[]> {
+  if (ids.length === 0) return []
+  const res = await db.query<Row>(
+    `SELECT id, source_path, content, metadata FROM chunks WHERE id = ANY($1)`,
+    [ids],
+  )
+  return res.rows
+}
