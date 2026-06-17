@@ -48,4 +48,14 @@ describe('chunkMarkdown', () => {
     expect(chunks.length).toBe(1)
     expect(chunks[0].content).toContain('# not a heading')
   })
+
+  it('does not throw on malformed frontmatter; indexes the body with empty metadata', () => {
+    // regression: real vault files can have unparseable YAML frontmatter (unterminated
+    // quotes, stray null bytes). One bad file must not abort the whole reindex.
+    const broken = '---\ntitle: "unterminated\n---\n## Heading\nbody text here.\n'
+    const chunks = chunkMarkdown('memory/bad.md', broken, 2000)
+    expect(chunks.length).toBeGreaterThanOrEqual(1)
+    expect(chunks.some((c) => c.content.includes('body text here.'))).toBe(true)
+    expect(chunks[0].metadata).toEqual({})
+  })
 })

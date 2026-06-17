@@ -54,8 +54,20 @@ function splitLong(text: string, maxChars: number): string[] {
 }
 
 export function chunkMarkdown(sourcePath: string, raw: string, maxChars = 2000): Chunk[] {
-  const { data: metadata, content } = matter(raw)
-  const sections = splitSections(content)
+  // Parse frontmatter defensively: a single file with malformed YAML (bad indentation,
+  // stray null bytes, an unquoted value that breaks the parser) must not abort the whole
+  // reindex. On failure, fall back to indexing the full body with empty metadata.
+  let metadata: Record<string, unknown> = {}
+  let body = raw
+  try {
+    const parsed = matter(raw)
+    metadata = parsed.data as Record<string, unknown>
+    body = parsed.content
+  } catch {
+    metadata = {}
+    body = raw
+  }
+  const sections = splitSections(body)
   const pieces: string[] = []
   for (const s of sections) pieces.push(...splitLong(s, maxChars))
   return pieces.map((content, chunkIndex) => ({
@@ -63,7 +75,7 @@ export function chunkMarkdown(sourcePath: string, raw: string, maxChars = 2000):
     sourcePath,
     chunkIndex,
     content,
-    metadata: metadata as Record<string, unknown>,
+    metadata,
     contentHash: sha(content),
   }))
 }
