@@ -1,0 +1,7 @@
+{
+  "vaultRoot": "/absolute/path/to/your/vault",
+  "dbPath": "data/brain.pglite",
+  "embedder": { "type": "ollama", "model": "nomic-embed-text", "endpoint": "http://localhost:11434", "dimensions": 768 },
+  "reranker": { "enabled": true, "model": "Xenova/bge-reranker-base" },
+  "server": { "host": "127.0.0.1", "port": 8765 }
+}

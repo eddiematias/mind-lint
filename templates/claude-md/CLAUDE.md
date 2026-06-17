@@ -34,3 +34,7 @@
 
 ## Workflows
 @rules/workflows.md
+
+## Brain (semantic recall)
+
+A local brain service indexes the whole vault. When you need past context beyond what's already loaded (a prior decision, a learning, who a person is, earlier work on a topic), call the `recall` or `search` MCP tool (server `mind-lint-brain`) instead of assuming the always-loaded indexes are complete. The service returns cited evidence; you synthesize. If the tool is absent, the service is not running.
