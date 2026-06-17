@@ -107,8 +107,8 @@ setup() {
     local collected=()
     _collect() { collected+=("$1"); }
     for_each_manifest_entry "1" "dir" _collect
-    # Should be exactly 2 cat-1 dir entries (templates, docs)
-    [ "${#collected[@]}" -eq 2 ]
+    # Should be exactly 3 cat-1 dir entries (templates, docs, brain)
+    [ "${#collected[@]}" -eq 3 ]
 }
 
 @test "for_each_manifest_entry with no filters visits every entry" {
