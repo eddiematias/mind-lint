@@ -19,6 +19,13 @@ export class OllamaEmbedder implements Embedder {
       throw new Error(`Ollama embed failed: ${res.status} ${body}`)
     }
     const data = (await res.json()) as { embeddings: number[][] }
+    const got = data.embeddings[0]?.length
+    if (got !== undefined && got !== this.dimensions) {
+      throw new Error(
+        `Ollama model '${this.cfg.model}' returned ${got}-dim vectors but config embedder.dimensions=${this.dimensions}. ` +
+          `Set embedder.dimensions to match the model; if the index was already built at the old dimension, delete data/ and reindex.`,
+      )
+    }
     return data.embeddings
   }
 }
