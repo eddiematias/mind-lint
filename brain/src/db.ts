@@ -1,9 +1,16 @@
 import { PGlite } from '@electric-sql/pglite'
 import { vector } from '@electric-sql/pglite/vector'
+import { mkdirSync } from 'node:fs'
+import { dirname } from 'node:path'
 import type { Chunk } from './types.js'
 
 export async function openDb(path: string): Promise<PGlite> {
-  return path ? new PGlite(path, { extensions: { vector } }) : new PGlite({ extensions: { vector } })
+  if (!path) return new PGlite({ extensions: { vector } }) // in-memory (tests)
+  // PGLite's nodefs creates only the leaf data dir, not missing parents, so a
+  // configured dbPath like data/brain.pglite fails ENOENT on first run unless the
+  // parent exists. Create it ourselves.
+  mkdirSync(dirname(path), { recursive: true })
+  return new PGlite(path, { extensions: { vector } })
 }
 
 export async function initSchema(db: PGlite, dims: number): Promise<void> {
