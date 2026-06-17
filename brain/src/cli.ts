@@ -41,10 +41,34 @@ async function main() {
 
   if (cmd === 'serve') {
     const reranker = makeReranker(cfg.reranker)
-    const server = buildServer(db, embedder, reranker)
-    const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined })
-    await server.connect(transport)
-    const http = createServer((req, res) => transport.handleRequest(req, res))
+    // Stateless MCP per the SDK's documented pattern: a fresh server + transport per
+    // request. Reusing a single connected transport across requests breaks the
+    // post-initialize lifecycle (notifications/initialized returns 500), which Claude
+    // Code's client trips over. db/embedder/reranker are reused via closure; only the
+    // thin McpServer/transport wrapper is recreated per request (cheap).
+    const http = createServer(async (req, res) => {
+      if (req.method !== 'POST') {
+        res.writeHead(405, { 'content-type': 'application/json' })
+        res.end(JSON.stringify({ jsonrpc: '2.0', error: { code: -32000, message: 'Method not allowed' }, id: null }))
+        return
+      }
+      try {
+        const chunks: Buffer[] = []
+        for await (const c of req) chunks.push(c as Buffer)
+        const body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : undefined
+        const server = buildServer(db, embedder, reranker)
+        const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined })
+        res.on('close', () => { void transport.close(); void server.close() })
+        await server.connect(transport)
+        await transport.handleRequest(req, res, body)
+      } catch (e) {
+        console.error(e)
+        if (!res.headersSent) {
+          res.writeHead(500, { 'content-type': 'application/json' })
+          res.end(JSON.stringify({ jsonrpc: '2.0', error: { code: -32603, message: 'Internal error' }, id: null }))
+        }
+      }
+    })
     http.listen(cfg.server.port, cfg.server.host, () => console.log(`brain serving on http://${cfg.server.host}:${cfg.server.port}/mcp`))
     return
   }
