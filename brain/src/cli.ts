@@ -1,15 +1,13 @@
 import { readFile } from 'node:fs/promises'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
-import { createServer } from 'node:http'
 import { loadConfig, requireVaultRoot } from './config.js'
 import type { BrainConfig } from './types.js'
 import { openDb, initSchema } from './db.js'
 import { OllamaEmbedder } from './embedder.js'
 import { makeReranker } from './reranker.js'
 import { indexVault } from './indexer.js'
-import { buildServer } from './server.js'
+import { createMcpHttpServer } from './server.js'
 
 // brain/ is symlinked into the vault from the public clone, so Node resolves
 // import.meta.url to the CLONE's real path, not the vault. That's fine for locating
@@ -41,34 +39,7 @@ async function main() {
 
   if (cmd === 'serve') {
     const reranker = makeReranker(cfg.reranker)
-    // Stateless MCP per the SDK's documented pattern: a fresh server + transport per
-    // request. Reusing a single connected transport across requests breaks the
-    // post-initialize lifecycle (notifications/initialized returns 500), which Claude
-    // Code's client trips over. db/embedder/reranker are reused via closure; only the
-    // thin McpServer/transport wrapper is recreated per request (cheap).
-    const http = createServer(async (req, res) => {
-      if (req.method !== 'POST') {
-        res.writeHead(405, { 'content-type': 'application/json' })
-        res.end(JSON.stringify({ jsonrpc: '2.0', error: { code: -32000, message: 'Method not allowed' }, id: null }))
-        return
-      }
-      try {
-        const chunks: Buffer[] = []
-        for await (const c of req) chunks.push(c as Buffer)
-        const body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : undefined
-        const server = buildServer(db, embedder, reranker)
-        const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined })
-        res.on('close', () => { void transport.close(); void server.close() })
-        await server.connect(transport)
-        await transport.handleRequest(req, res, body)
-      } catch (e) {
-        console.error(e)
-        if (!res.headersSent) {
-          res.writeHead(500, { 'content-type': 'application/json' })
-          res.end(JSON.stringify({ jsonrpc: '2.0', error: { code: -32603, message: 'Internal error' }, id: null }))
-        }
-      }
-    })
+    const http = createMcpHttpServer(db, embedder, reranker)
     http.listen(cfg.server.port, cfg.server.host, () => console.log(`brain serving on http://${cfg.server.host}:${cfg.server.port}/mcp`))
     return
   }
