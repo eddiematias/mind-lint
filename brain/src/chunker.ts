@@ -53,6 +53,46 @@ function splitLong(text: string, maxChars: number): string[] {
   return out
 }
 
+// Render a scalar-or-array YAML value as a comma-joined string.
+function asList(v: unknown): string {
+  if (Array.isArray(v)) return v.map((x) => String(x)).join(', ')
+  return v == null ? '' : String(v)
+}
+
+// Phase 2 (R1): entities store their typed edges in nested `affiliations` frontmatter,
+// which the body-only embed path never sees. Serialize the entity header + edges into a
+// short human-readable block so the structured edges are embedded + keyword-searchable.
+// This is generated at index time from the parsed frontmatter only; the YAML stays the
+// single source of truth (we never write this back to disk, never duplicate into body prose).
+// Returns '' for non-entity files, so ordinary notes are untouched. The gate is the ENTITY
+// type set (not "any non-empty type"): indexed files like journal/*.md (type: daily-note)
+// and content ideas (type: business-exploration) carry a `type:` too, and must NOT get a
+// serialized header — only person/company/project entities do.
+const ENTITY_TYPES = new Set(['person', 'company', 'project'])
+function serializeEntityFrontmatter(meta: Record<string, unknown>): string {
+  const type = meta.type
+  if (!ENTITY_TYPES.has(String(type))) return ''
+  const lines: string[] = []
+  lines.push(`type: ${asList(type)}`)
+  if (meta.relationship != null) lines.push(`relationship: ${asList(meta.relationship)}`)
+  if (meta.category != null) lines.push(`category: ${asList(meta.category)}`)
+  if (meta.status != null) lines.push(`status: ${asList(meta.status)}`)
+  const affs = meta.affiliations
+  if (Array.isArray(affs)) {
+    for (const a of affs) {
+      if (a && typeof a === 'object') {
+        const e = a as Record<string, unknown>
+        const target = e.target == null ? '' : String(e.target)
+        const role = e.role == null ? '' : String(e.role)
+        const cat = e.category == null ? '' : String(e.category)
+        const meta2 = [role, cat].filter((s) => s !== '').join(', ')
+        lines.push(meta2 ? `affiliated with ${target} (${meta2})` : `affiliated with ${target}`)
+      }
+    }
+  }
+  return lines.join('\n')
+}
+
 export function chunkMarkdown(sourcePath: string, raw: string, maxChars = 2000): Chunk[] {
   // Parse frontmatter defensively: a single file with malformed YAML (bad indentation,
   // stray null bytes, an unquoted value that breaks the parser) must not abort the whole
@@ -70,6 +110,15 @@ export function chunkMarkdown(sourcePath: string, raw: string, maxChars = 2000):
   const sections = splitSections(body)
   const pieces: string[] = []
   for (const s of sections) pieces.push(...splitLong(s, maxChars))
+
+  // R1: prepend the serialized entity header (incl. affiliations) to the FIRST chunk only,
+  // so edges are embedded + keyword-searchable without duplicating into body prose.
+  const header = serializeEntityFrontmatter(metadata)
+  if (header) {
+    if (pieces.length === 0) pieces.push(header)
+    else pieces[0] = `${header}\n\n${pieces[0]}`
+  }
+
   return pieces.map((content, chunkIndex) => ({
     id: `${sourcePath}#${chunkIndex}`,
     sourcePath,
