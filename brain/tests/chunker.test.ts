@@ -58,4 +58,70 @@ describe('chunkMarkdown', () => {
     expect(chunks.some((c) => c.content.includes('body text here.'))).toBe(true)
     expect(chunks[0].metadata).toEqual({})
   })
+
+  it('serializes entity frontmatter (incl. affiliations) into the first chunk text', () => {
+    const entity = [
+      '---',
+      'type: company',
+      'relationship: employer',
+      'category: business',
+      'status: active',
+      'affiliations:',
+      '  - target: "[[Jeff Perera]]"',
+      '    role: founded',
+      '    category: business',
+      '    source: human',
+      '    context: ""',
+      '---',
+      '',
+      '## Snapshot',
+      'A bagel company.',
+    ].join('\n')
+    const chunks = chunkMarkdown('wiki/companies/JBR.md', entity, 2000)
+    // the first chunk carries a readable serialization of the structured edges
+    expect(chunks[0].content).toContain('type: company')
+    expect(chunks[0].content).toContain('relationship: employer')
+    expect(chunks[0].content).toContain('affiliated with [[Jeff Perera]] (founded, business)')
+    // the body is still present and still searchable
+    expect(chunks.some((c) => c.content.includes('A bagel company.'))).toBe(true)
+    // metadata is unchanged (single source of truth still parsed from frontmatter)
+    expect(chunks[0].metadata.type).toBe('company')
+    expect(Array.isArray(chunks[0].metadata.affiliations)).toBe(true)
+  })
+
+  it('multi-valued relationship is comma-joined in the serialized header', () => {
+    const entity = [
+      '---',
+      'type: person',
+      'relationship: [friend, co-worker]',
+      'category: mixed',
+      'status: active',
+      '---',
+      '',
+      '## Snapshot',
+      'Body.',
+    ].join('\n')
+    const chunks = chunkMarkdown('wiki/people/X.md', entity, 2000)
+    expect(chunks[0].content).toContain('relationship: friend, co-worker')
+  })
+
+  it('files without entity frontmatter are unchanged (no serialized header)', () => {
+    const plain = '---\ntitle: Note\n---\n## Heading\nbody.\n'
+    const chunks = chunkMarkdown('memory/x.md', plain, 2000)
+    // no entity `type:` ⇒ no serialized affiliations header is prepended
+    expect(chunks[0].content).not.toContain('affiliated with')
+    expect(chunks[0].content.startsWith('type:')).toBe(false)
+  })
+
+  it('non-entity typed files (e.g. type: daily-note) get NO serialized header', () => {
+    // journal notes carry `type: daily-note`; content ideas carry e.g.
+    // `type: business-exploration`. They have a non-empty `type:` but are NOT entities,
+    // so the gate (ENTITY_TYPES) must leave them byte-for-byte unchanged.
+    const dailyNote = '---\ntype: daily-note\ndate: 2026-06-17\n---\n## Notes\nsome thoughts.\n'
+    const chunks = chunkMarkdown('journal/2026-06-17.md', dailyNote, 2000)
+    expect(chunks[0].content).not.toContain('affiliated with')
+    expect(chunks[0].content.startsWith('type:')).toBe(false)
+    // the body is the only thing present, exactly as the pre-change chunker produced
+    expect(chunks[0].content).toContain('some thoughts.')
+  })
 })

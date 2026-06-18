@@ -12,7 +12,9 @@ Per-person profiles live at `wiki/people/<Name>.md`. They capture **how the user
 - `## How they show up` — their side. **Human-authored.**
 - `## History` — dated narrative arc, append-only. **Human-authored**, with `/people-sync` permitted to nominate milestone candidates for per-candidate approval.
 - `## Recent threads` — rolling 60-day window. **Refreshed by `/people-sync`** (still per-candidate approval, rewritten on each run).
-- `## Connections` — wikilinks to other people, places, projects.
+- `affiliations:` (frontmatter) — typed cross-entity edges to other people, companies, projects. Replaces the old prose `## Connections` section.
+
+> Companies and Projects follow the same entity pattern (typed `affiliations` edges in frontmatter). See `docs/entity-model.md` for the full schema, the canonical role vocabulary, and the to-me-vs-edge vocabulary distinction.
 
 **The agent-doesn't-characterize rule (load-bearing).** `## Snapshot`, `## How I show up`, and `## How they show up` are 100% human-authored. `/people-sync` NEVER proposes content for them — characterizing a relationship from text data is partial, and the closer the agent gets to writing about how someone shows up in a relationship, the more wrong/off the profile reads. If `/people-sync` notices a pattern that would belong in one of those sections (e.g. "she initiates more often than he does"), it surfaces the observation in chat, never as a profile write.
 

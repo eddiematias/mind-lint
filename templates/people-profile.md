@@ -1,11 +1,19 @@
 ---
+type: person
 name: <Name>
-relationship: <e.g., fiancée, business partner, mom, friend>
-status: active
+relationship: "<to-me role(s): girlfriend | friend | family | co-worker | collaborator | client; may be multi-valued e.g. [friend, co-worker]>"
+category: "<business | personal | mixed>"
+status: "<active | seeded | dormant>"
 imessage-handle: <phone-or-email-here>
 last-synced-imessage: never
 last-synced-calendar: never
 last-synced-journal: never
+affiliations:
+  - target: "[[Other Entity]]"   # a Person, Company, or Project this person points to
+    role: "<edge vocab: works-at | founded | co-founder | friend | family | collaborator | client | lead | president>"
+    category: "<business | personal | mixed>"   # nature of THIS edge, independent of me (R4)
+    source: human                              # provenance; human now
+    context: ""                                # source-span; human edges leave blank
 ---
 
 # <Name>
@@ -38,11 +46,3 @@ last-synced-journal: never
 
 <!-- Rolling 60-day window. Refreshed by /people-sync. The only section
      /people-sync writes freely (still per-candidate approval). -->
-
-## Connections
-
-<!-- Wikilinks to other people, places, projects. -->
-
-- People:
-- Places:
-- Projects:

@@ -9,7 +9,7 @@ Refresh `## Recent threads` and propose `## History` candidates for the profile 
 
 ## Inputs to read
 
-1. `wiki/people/<Name>.md` — read frontmatter (`imessage-handle`, `last-synced-imessage`, `status`).
+1. `wiki/people/<Name>.md` — read frontmatter (`imessage-handle`, `last-synced-imessage`, `status`, `relationship`, `category`).
 2. After running the export, the latest contents of `raw/imessage/<sanitized-handle>/`.
 
 ## Step 1 — Resolve the profile
@@ -80,7 +80,12 @@ For each candidate, ask the user one of:
 - **History is append-only.** New entries match the existing convention in that profile (chronological top or bottom). Read the profile to detect the pattern; ask if ambiguous.
 - **Always show the proposed diff** before writing.
 - **Update `last-synced-imessage`** in frontmatter to today's date after the run.
-- **Update `wiki/people/_index.md`** last-synced cell for this person.
+- **Update `wiki/people/_index.md`** for this person. The roster is 7 columns:
+  `Name | Relationship | Category | Status | Last Synced (iMessage) | Last Synced (Calendar) | Last Synced (Journal)`.
+  **Category** sits between Relationship and Status (added in Phase 2 entity model). When
+  rewriting a person's row, update only the `Last Synced (iMessage)` cell to today's date
+  and **preserve the existing Relationship and Category cells verbatim** — never blank or
+  reorder them. (Relationship/Category come from the profile frontmatter, not from this sync.)
 
 ## What this command does NOT do
 
