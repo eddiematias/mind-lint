@@ -21,8 +21,40 @@ export function loadConfig(raw: Partial<BrainConfig>, vaultRoot: string): BrainC
     scopeGlobs: raw.scopeGlobs ?? DEFAULTS.scopeGlobs,
     embedder: { ...DEFAULTS.embedder, ...(raw.embedder ?? {}) },
     reranker: { ...DEFAULTS.reranker, ...(raw.reranker ?? {}) },
-    server: { ...DEFAULTS.server, ...(raw.server ?? {}) },
+    server: resolveServerConfig(raw.server),
   }
+}
+
+// Precedence for the server block: env vars (highest) > brain.config.json > code defaults.
+// Env wins so the Mac Mini can set BRAIN_AUTH_TOKEN in the launchd plist's
+// EnvironmentVariables without writing the token into any file. Unset/empty env vars
+// are ignored, so a public-repo cloner with no env vars gets exactly the file/default
+// behavior. The loopback default (127.0.0.1) is preserved.
+function resolveServerConfig(raw: BrainConfig['server'] | undefined): BrainConfig['server'] {
+  const merged = { ...DEFAULTS.server, ...(raw ?? {}) }
+  if (process.env.BRAIN_HOST) merged.host = process.env.BRAIN_HOST
+  if (process.env.BRAIN_PORT) {
+    const p = parseInt(process.env.BRAIN_PORT, 10)
+    if (!Number.isNaN(p)) merged.port = p // ignore an unparseable BRAIN_PORT; fall through to file/default
+  }
+  if (process.env.BRAIN_AUTH_TOKEN) merged.authToken = process.env.BRAIN_AUTH_TOKEN
+  return merged
+}
+
+// Fail-closed serve guard (R-C1). serve requires a token unless the explicit
+// BRAIN_ALLOW_NO_AUTH=1 escape hatch is set. The check is NOT gated on the bind
+// address: the dangerous case is loopback + `tailscale serve` + no token, which a
+// non-loopback heuristic misses. Returns an error message string when serving
+// would be unauthenticated and disallowed; null when it is safe to proceed.
+export function serveAuthError(authToken: string | undefined, allowNoAuth: boolean): string | null {
+  if (authToken || allowNoAuth) return null
+  return (
+    'refusing to start: no server.authToken configured.\n' +
+    'Set server.authToken in brain.config.json or the BRAIN_AUTH_TOKEN env var, or, only if you\n' +
+    'really intend to run with NO authentication (purely local, no Tailscale Serve), set\n' +
+    'BRAIN_ALLOW_NO_AUTH=1 to override. The MCP endpoint exposes the whole vault to anyone who\n' +
+    'can reach it; fronting a no-auth server with `tailscale serve` exposes it to the tailnet.'
+  )
 }
 
 // vaultRoot has no default: it must be an explicit absolute path to the vault to

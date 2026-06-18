@@ -64,3 +64,96 @@ describe('MCP HTTP handshake', () => {
     expect(res.status).toBe(405)
   })
 })
+
+describe('MCP HTTP bearer auth', () => {
+  const TOKEN = 'test-secret-token'
+
+  async function startServer(opts: { authToken?: string }) {
+    const db: PGlite = await openDb('')
+    await initSchema(db, 768)
+    const server: Server = createMcpHttpServer(db, new FakeEmbedder(768), new NoopReranker(), opts)
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    const addr = server.address()
+    const port = typeof addr === 'object' && addr ? addr.port : 0
+    const url = `http://127.0.0.1:${port}/mcp`
+    const close = () => new Promise<void>((resolve) => server.close(() => resolve()))
+    return { url, close }
+  }
+
+  const initialize = {
+    jsonrpc: '2.0', id: 1, method: 'initialize',
+    params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 't', version: '0' } },
+  }
+  const post = (url: string, headers: Record<string, string> = {}) =>
+    fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', ...headers },
+      body: JSON.stringify(initialize),
+    })
+
+  it('with a token configured, a request with NO Authorization header returns 401', async () => {
+    const { url, close } = await startServer({ authToken: TOKEN })
+    try {
+      const res = await post(url)
+      expect(res.status).toBe(401)
+      expect(res.headers.get('www-authenticate')).toBe('Bearer')
+    } finally {
+      await close()
+    }
+  })
+
+  it('with a token configured, a WRONG token (different length) returns 401', async () => {
+    const { url, close } = await startServer({ authToken: TOKEN })
+    try {
+      const res = await post(url, { authorization: 'Bearer wrong-token' })
+      expect(res.status).toBe(401)
+    } finally {
+      await close()
+    }
+  })
+
+  it('with a token configured, a SAME-LENGTH wrong token returns 401 (exercises the digest compare)', async () => {
+    const { url, close } = await startServer({ authToken: TOKEN })
+    try {
+      const sameLen = 'xxxx-xxxxxx-xxxxx'
+      expect(sameLen.length).toBe(TOKEN.length)
+      const res = await post(url, { authorization: `Bearer ${sameLen}` })
+      expect(res.status).toBe(401)
+    } finally {
+      await close()
+    }
+  })
+
+  it('with a token configured, an unauthenticated GET returns 401 (not 405), auth gate is above the method gate', async () => {
+    const { url, close } = await startServer({ authToken: TOKEN })
+    try {
+      const res = await fetch(url, { method: 'GET' })
+      expect(res.status).toBe(401)
+      expect(res.headers.get('www-authenticate')).toBe('Bearer')
+    } finally {
+      await close()
+    }
+  })
+
+  it('with a token configured, the CORRECT Bearer token returns a normal 200 MCP response', async () => {
+    const { url, close } = await startServer({ authToken: TOKEN })
+    try {
+      const res = await post(url, { authorization: `Bearer ${TOKEN}` })
+      expect(res.status).toBe(200)
+      expect(await res.text()).toContain('mind-lint-brain')
+    } finally {
+      await close()
+    }
+  })
+
+  it('with NO token configured (open mode), a request with no header still returns 200', async () => {
+    const { url, close } = await startServer({})
+    try {
+      const res = await post(url)
+      expect(res.status).toBe(200)
+      expect(await res.text()).toContain('mind-lint-brain')
+    } finally {
+      await close()
+    }
+  })
+})

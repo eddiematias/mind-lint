@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { loadConfig, requireVaultRoot } from './config.js'
+import { loadConfig, requireVaultRoot, serveAuthError } from './config.js'
 import type { BrainConfig } from './types.js'
 import { openDb, initSchema, setMeta } from './db.js'
 import { OllamaEmbedder } from './embedder.js'
@@ -46,8 +46,16 @@ async function main() {
 
   if (cmd === 'serve') {
     const reranker = makeReranker(cfg.reranker)
-    const http = createMcpHttpServer(db, embedder, reranker)
-    http.listen(cfg.server.port, cfg.server.host, () => console.log(`brain serving on http://${cfg.server.host}:${cfg.server.port}/mcp`))
+    const { host, port, authToken } = cfg.server
+    const allowNoAuth = process.env.BRAIN_ALLOW_NO_AUTH === '1'
+    const err = serveAuthError(authToken, allowNoAuth)
+    if (err) {
+      console.error(`[brain] ${err}`)
+      process.exit(1) // fail closed (R-C1)
+    }
+    const http = createMcpHttpServer(db, embedder, reranker, { authToken })
+    const mode = authToken ? ' (bearer auth required)' : ' (NO AUTH, BRAIN_ALLOW_NO_AUTH=1)'
+    http.listen(port, host, () => console.log(`brain serving on http://${host}:${port}/mcp${mode}`))
     return
   }
 
