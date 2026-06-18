@@ -21,8 +21,24 @@ export function loadConfig(raw: Partial<BrainConfig>, vaultRoot: string): BrainC
     scopeGlobs: raw.scopeGlobs ?? DEFAULTS.scopeGlobs,
     embedder: { ...DEFAULTS.embedder, ...(raw.embedder ?? {}) },
     reranker: { ...DEFAULTS.reranker, ...(raw.reranker ?? {}) },
-    server: { ...DEFAULTS.server, ...(raw.server ?? {}) },
+    server: resolveServerConfig(raw.server),
   }
+}
+
+// Precedence for the server block: env vars (highest) > brain.config.json > code defaults.
+// Env wins so the Mac Mini can set BRAIN_AUTH_TOKEN in the launchd plist's
+// EnvironmentVariables without writing the token into any file. Unset/empty env vars
+// are ignored, so a public-repo cloner with no env vars gets exactly the file/default
+// behavior. The loopback default (127.0.0.1) is preserved.
+function resolveServerConfig(raw: BrainConfig['server'] | undefined): BrainConfig['server'] {
+  const merged = { ...DEFAULTS.server, ...(raw ?? {}) }
+  if (process.env.BRAIN_HOST) merged.host = process.env.BRAIN_HOST
+  if (process.env.BRAIN_PORT) {
+    const p = parseInt(process.env.BRAIN_PORT, 10)
+    if (!Number.isNaN(p)) merged.port = p // ignore an unparseable BRAIN_PORT; fall through to file/default
+  }
+  if (process.env.BRAIN_AUTH_TOKEN) merged.authToken = process.env.BRAIN_AUTH_TOKEN
+  return merged
 }
 
 // vaultRoot has no default: it must be an explicit absolute path to the vault to

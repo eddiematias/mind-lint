@@ -1,5 +1,5 @@
 // brain/tests/config.test.ts
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, afterEach } from 'vitest'
 import { loadConfig, requireVaultRoot } from '../src/config.js'
 
 describe('loadConfig', () => {
@@ -27,5 +27,22 @@ describe('loadConfig', () => {
 
   it('requireVaultRoot returns the path when present', () => {
     expect(requireVaultRoot({ vaultRoot: '/v' })).toBe('/v')
+  })
+})
+
+describe('loadConfig server block precedence', () => {
+  const saved = { ...process.env }
+  afterEach(() => { process.env = { ...saved } })
+
+  it('BRAIN_AUTH_TOKEN env wins over file server.authToken', () => {
+    process.env.BRAIN_AUTH_TOKEN = 'envtok'
+    const cfg = loadConfig({ server: { host: '127.0.0.1', port: 8765, authToken: 'filetok' } }, '/tmp/v')
+    expect(cfg.server.authToken).toBe('envtok')
+  })
+
+  it('with no env var set, the file server.authToken is used', () => {
+    delete process.env.BRAIN_AUTH_TOKEN
+    const cfg = loadConfig({ server: { host: '127.0.0.1', port: 8765, authToken: 'filetok' } }, '/tmp/v')
+    expect(cfg.server.authToken).toBe('filetok')
   })
 })
