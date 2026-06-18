@@ -18,6 +18,8 @@ claude mcp add --transport http mind-lint-brain http://127.0.0.1:8765/mcp
 
 > `brain/` ships inside the mind-lint framework clone and is symlinked to `~/.claude/brain` on install. Run these commands from the clone's `brain/` (or the symlink). `vaultRoot` in `brain.config.json` is what points the indexer at your content, so the service does not need to sit inside the vault.
 
+> **Production / upgrades:** the durable install runs the compiled `dist/` under launchd on the Mac Mini. See [`DEPLOYMENT.md`](DEPLOYMENT.md) for the runtime topology and the correct upgrade procedure for a chunker/embedder change (build is mandatory; pause the reindex job; force/auto re-chunk).
+
 ## Separate box (e.g. a Mac Mini)
 
 Run the service on the box. Set `server.host` to `0.0.0.0` in `brain.config.json`. From your laptop:
