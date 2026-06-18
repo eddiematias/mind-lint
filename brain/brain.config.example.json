@@ -3,5 +3,5 @@
   "dbPath": "data/brain.pglite",
   "embedder": { "type": "ollama", "model": "nomic-embed-text", "endpoint": "http://localhost:11434", "dimensions": 768 },
   "reranker": { "enabled": true, "model": "Xenova/bge-reranker-base" },
-  "server": { "host": "127.0.0.1", "port": 8765 }
+  "server": { "host": "127.0.0.1", "port": 8765, "authToken": "REPLACE_WITH_A_RANDOM_TOKEN_OR_LEAVE_OUT_FOR_OPEN_MODE" }
 }
