@@ -1,6 +1,6 @@
 // brain/tests/db.test.ts
 import { describe, it, expect, beforeEach, afterAll } from 'vitest'
-import { openDb, initSchema, upsertChunk, vectorSearch, keywordSearch } from '../src/db.js'
+import { openDb, initSchema, upsertChunk, vectorSearch, keywordSearch, getMeta, setMeta } from '../src/db.js'
 import { existsSync, rmSync } from 'node:fs'
 import { resolve } from 'node:path'
 import type { PGlite } from '@electric-sql/pglite'
@@ -27,6 +27,17 @@ describe('db', () => {
     await upsertChunk(db, { id: 'b#0', sourcePath: 'b.md', chunkIndex: 0, content: 'payload migration discipline', metadata: {}, contentHash: 'h2' }, vec(2))
     const hits = await keywordSearch(db, 'migration', 5)
     expect(hits.map((h) => h.id)).toContain('b#0')
+  })
+
+  it('stores and reads back meta key/value rows', async () => {
+    expect(await getMeta(db, 'chunker_version')).toBeNull()
+    await setMeta(db, 'chunker_version', '2')
+    await setMeta(db, 'embedder_id', 'fake:768')
+    expect(await getMeta(db, 'chunker_version')).toBe('2')
+    expect(await getMeta(db, 'embedder_id')).toBe('fake:768')
+    // upsert semantics: re-setting a key overwrites
+    await setMeta(db, 'chunker_version', '3')
+    expect(await getMeta(db, 'chunker_version')).toBe('3')
   })
 })
 

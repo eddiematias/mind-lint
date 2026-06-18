@@ -3,8 +3,9 @@ import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { loadConfig, requireVaultRoot } from './config.js'
 import type { BrainConfig } from './types.js'
-import { openDb, initSchema } from './db.js'
+import { openDb, initSchema, setMeta } from './db.js'
 import { OllamaEmbedder } from './embedder.js'
+import { CHUNKER_VERSION } from './chunker.js'
 import { makeReranker } from './reranker.js'
 import { indexVault } from './indexer.js'
 import { createMcpHttpServer } from './server.js'
@@ -34,7 +35,12 @@ async function main() {
   if (cmd === 'reindex') {
     const force = process.argv.includes('--force') || process.argv.includes('--full')
     const res = await indexVault(db, embedder, { vaultRoot: cfg.vaultRoot, scopeGlobs: cfg.scopeGlobs, force })
-    console.log(`indexed=${res.filesIndexed} skipped=${res.filesSkipped} removed=${res.filesRemoved} chunks=${res.chunksWritten}`)
+    await setMeta(db, 'chunker_version', CHUNKER_VERSION)
+    await setMeta(db, 'embedder_id', embedder.id)
+    console.log(
+      `indexed=${res.filesIndexed} skipped=${res.filesSkipped} removed=${res.filesRemoved} chunks=${res.chunksWritten} ` +
+        `chunker=${CHUNKER_VERSION} embedder=${embedder.id}${force ? ' (forced)' : ''}`,
+    )
     process.exit(0)
   }
 
