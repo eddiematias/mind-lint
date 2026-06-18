@@ -59,4 +59,12 @@ describe('indexVault', () => {
     expect(again.filesIndexed).toBe(0)
     expect(again.filesSkipped).toBe(2)
   })
+
+  it('force re-chunks every file even when nothing changed', async () => {
+    await indexVault(db, new FakeEmbedder(768), cfg, 2000)
+    // without force this would be indexed=0 skipped=2; with force it must re-chunk all.
+    const forced = await indexVault(db, new FakeEmbedder(768), { ...cfg, force: true }, 2000)
+    expect(forced.filesIndexed).toBe(2)
+    expect(forced.filesSkipped).toBe(0)
+  })
 })

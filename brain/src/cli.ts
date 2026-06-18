@@ -32,7 +32,8 @@ async function main() {
   const embedder = new OllamaEmbedder(cfg.embedder)
 
   if (cmd === 'reindex') {
-    const res = await indexVault(db, embedder, { vaultRoot: cfg.vaultRoot, scopeGlobs: cfg.scopeGlobs })
+    const force = process.argv.includes('--force') || process.argv.includes('--full')
+    const res = await indexVault(db, embedder, { vaultRoot: cfg.vaultRoot, scopeGlobs: cfg.scopeGlobs, force })
     console.log(`indexed=${res.filesIndexed} skipped=${res.filesSkipped} removed=${res.filesRemoved} chunks=${res.chunksWritten}`)
     process.exit(0)
   }
