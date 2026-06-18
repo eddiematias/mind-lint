@@ -41,6 +41,22 @@ function resolveServerConfig(raw: BrainConfig['server'] | undefined): BrainConfi
   return merged
 }
 
+// Fail-closed serve guard (R-C1). serve requires a token unless the explicit
+// BRAIN_ALLOW_NO_AUTH=1 escape hatch is set. The check is NOT gated on the bind
+// address: the dangerous case is loopback + `tailscale serve` + no token, which a
+// non-loopback heuristic misses. Returns an error message string when serving
+// would be unauthenticated and disallowed; null when it is safe to proceed.
+export function serveAuthError(authToken: string | undefined, allowNoAuth: boolean): string | null {
+  if (authToken || allowNoAuth) return null
+  return (
+    'refusing to start: no server.authToken configured.\n' +
+    'Set server.authToken in brain.config.json or the BRAIN_AUTH_TOKEN env var, or, only if you\n' +
+    'really intend to run with NO authentication (purely local, no Tailscale Serve), set\n' +
+    'BRAIN_ALLOW_NO_AUTH=1 to override. The MCP endpoint exposes the whole vault to anyone who\n' +
+    'can reach it; fronting a no-auth server with `tailscale serve` exposes it to the tailnet.'
+  )
+}
+
 // vaultRoot has no default: it must be an explicit absolute path to the vault to
 // index. Because brain/ is symlinked from the clone, it cannot be inferred from the
 // running file's location (see Task 11). The CLI calls this before loadConfig.

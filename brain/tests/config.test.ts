@@ -1,6 +1,6 @@
 // brain/tests/config.test.ts
 import { describe, it, expect, afterEach } from 'vitest'
-import { loadConfig, requireVaultRoot } from '../src/config.js'
+import { loadConfig, requireVaultRoot, serveAuthError } from '../src/config.js'
 
 describe('loadConfig', () => {
   it('applies defaults when given an empty object', () => {
@@ -44,5 +44,17 @@ describe('loadConfig server block precedence', () => {
     delete process.env.BRAIN_AUTH_TOKEN
     const cfg = loadConfig({ server: { host: '127.0.0.1', port: 8765, authToken: 'filetok' } }, '/tmp/v')
     expect(cfg.server.authToken).toBe('filetok')
+  })
+})
+
+describe('serveAuthError (fail-closed serve guard)', () => {
+  it('errors when no token and no escape hatch (serve must refuse)', () => {
+    expect(serveAuthError(undefined, false)).toBeTypeOf('string')
+  })
+  it('allows serve when a token is configured', () => {
+    expect(serveAuthError('tok', false)).toBeNull()
+  })
+  it('allows serve with no token ONLY when BRAIN_ALLOW_NO_AUTH=1 (escape hatch)', () => {
+    expect(serveAuthError(undefined, true)).toBeNull()
   })
 })
