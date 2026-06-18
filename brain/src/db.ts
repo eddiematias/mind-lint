@@ -34,6 +34,11 @@ export async function initSchema(db: PGlite, dims: number): Promise<void> {
     );
     CREATE INDEX IF NOT EXISTS chunks_tsv_idx ON chunks USING GIN (tsv);
     CREATE INDEX IF NOT EXISTS chunks_source_idx ON chunks (source_path);
+    CREATE TABLE IF NOT EXISTS meta (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TIMESTAMPTZ DEFAULT now()
+    );
   `)
 }
 
@@ -85,6 +90,19 @@ export async function setFileHash(db: PGlite, path: string, hash: string): Promi
     `INSERT INTO files (path, file_hash, last_indexed) VALUES ($1, $2, now())
      ON CONFLICT (path) DO UPDATE SET file_hash = EXCLUDED.file_hash, last_indexed = now()`,
     [path, hash],
+  )
+}
+
+export async function getMeta(db: PGlite, key: string): Promise<string | null> {
+  const res = await db.query<{ value: string }>(`SELECT value FROM meta WHERE key = $1`, [key])
+  return res.rows[0]?.value ?? null
+}
+
+export async function setMeta(db: PGlite, key: string, value: string): Promise<void> {
+  await db.query(
+    `INSERT INTO meta (key, value, updated_at) VALUES ($1, $2, now())
+     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
+    [key, value],
   )
 }
 

@@ -3,9 +3,11 @@ import type { Embedder } from './types.js'
 interface OllamaCfg { model: string; endpoint: string; dimensions: number }
 
 export class OllamaEmbedder implements Embedder {
+  readonly id: string
   readonly dimensions: number
   constructor(private cfg: OllamaCfg, private fetchImpl: typeof fetch = fetch) {
     this.dimensions = cfg.dimensions
+    this.id = `ollama:${cfg.model}:${cfg.dimensions}`
   }
 
   async embed(texts: string[]): Promise<number[][]> {
@@ -32,7 +34,10 @@ export class OllamaEmbedder implements Embedder {
 
 // Deterministic fake for tests/indexers without Ollama running.
 export class FakeEmbedder implements Embedder {
-  constructor(readonly dimensions = 768) {}
+  readonly id: string
+  constructor(readonly dimensions = 768) {
+    this.id = `fake:${dimensions}`
+  }
   async embed(texts: string[]): Promise<number[][]> {
     return texts.map((t) => {
       let seed = 0

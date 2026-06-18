@@ -1,6 +1,6 @@
 // brain/tests/chunker.test.ts
 import { describe, it, expect } from 'vitest'
-import { chunkMarkdown } from '../src/chunker.js'
+import { chunkMarkdown, CHUNKER_VERSION } from '../src/chunker.js'
 
 const doc = `---
 title: Test Note
@@ -15,6 +15,11 @@ More text here.
 `
 
 describe('chunkMarkdown', () => {
+  it('exports a non-empty CHUNKER_VERSION used to key the reindex skip cache', () => {
+    expect(typeof CHUNKER_VERSION).toBe('string')
+    expect(CHUNKER_VERSION.length).toBeGreaterThan(0)
+  })
+
   it('parses frontmatter onto every chunk', () => {
     const chunks = chunkMarkdown('memory/x.md', doc, 2000)
     expect(chunks.length).toBe(2)

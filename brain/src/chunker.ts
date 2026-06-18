@@ -2,6 +2,14 @@ import matter from 'gray-matter'
 import { createHash } from 'node:crypto'
 import type { Chunk } from './types.js'
 
+// Bumped on ANY change to how a file's raw bytes are serialized into chunk text
+// (section splitting, the entity-frontmatter header, long-paragraph slicing, etc.).
+// Folded into the reindex skip key (see indexer.ts) so a serialization change
+// auto-invalidates every file's cache entry — the Phase-2 deploy bug (a new chunker
+// that re-serializes identical source was silently skipped) cannot recur.
+// v1 = original body-only chunker; v2 = Phase-2 entity-frontmatter serialization.
+export const CHUNKER_VERSION = '2'
+
 function sha(s: string): string {
   return createHash('sha256').update(s).digest('hex').slice(0, 16)
 }
@@ -69,6 +77,8 @@ function asList(v: unknown): string {
 // and content ideas (type: business-exploration) carry a `type:` too, and must NOT get a
 // serialized header — only person/company/project entities do.
 const ENTITY_TYPES = new Set(['person', 'company', 'project'])
+// NOTE: changing how a file is serialized here is a cache-invalidating event —
+// bump CHUNKER_VERSION (top of file) so reindex re-chunks every file on the next run.
 function serializeEntityFrontmatter(meta: Record<string, unknown>): string {
   const type = meta.type
   if (!ENTITY_TYPES.has(String(type))) return ''
@@ -107,6 +117,8 @@ export function chunkMarkdown(sourcePath: string, raw: string, maxChars = 2000):
     metadata = {}
     body = raw
   }
+  // NOTE: changing how a file is serialized here is a cache-invalidating event —
+  // bump CHUNKER_VERSION (top of file) so reindex re-chunks every file on the next run.
   const sections = splitSections(body)
   const pieces: string[] = []
   for (const s of sections) pieces.push(...splitLong(s, maxChars))
