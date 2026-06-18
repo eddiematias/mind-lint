@@ -25,6 +25,9 @@ export interface RetrievedChunk {
 }
 
 export interface Embedder {
+  // Stable identity of the embedding model + output shape (e.g. 'ollama:nomic-embed-text:768').
+  // Folded into the reindex skip key so swapping the embedding model auto-invalidates the cache.
+  readonly id: string
   readonly dimensions: number
   embed(texts: string[]): Promise<number[][]>
 }
