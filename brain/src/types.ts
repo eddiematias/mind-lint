@@ -4,7 +4,10 @@ export interface BrainConfig {
   vaultRoot: string              // absolute path to the vault
   embedder: { type: 'ollama'; model: string; endpoint: string; dimensions: number }
   reranker: { enabled: boolean; model: string }
-  server: { host: string; port: number }
+  // authToken: when set, createMcpHttpServer requires `Authorization: Bearer <token>`.
+  // Optional so the default open/loopback mode (the public-repo cloner default) is unchanged.
+  // Never committed: it comes from the gitignored brain.config.json or the BRAIN_AUTH_TOKEN env var.
+  server: { host: string; port: number; authToken?: string }
 }
 
 export interface Chunk {
