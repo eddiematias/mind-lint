@@ -10,6 +10,19 @@ import type { Chunk } from './types.js'
 // v1 = original body-only chunker; v2 = Phase-2 entity-frontmatter serialization.
 export const CHUNKER_VERSION = '2'
 
+export interface ParsedAffiliation {
+  target: string         // raw "[[Name]]" verbatim
+  role: string
+  category: string | null
+  source: string
+  context: string
+}
+export interface ParsedEntityFile {
+  chunks: Chunk[]
+  affiliations: ParsedAffiliation[]   // [] for non-entity files or entities with none
+  type: string | null                 // 'person' | 'company' | 'project' | null
+}
+
 function sha(s: string): string {
   return createHash('sha256').update(s).digest('hex').slice(0, 16)
 }
@@ -139,4 +152,39 @@ export function chunkMarkdown(sourcePath: string, raw: string, maxChars = 2000):
     metadata,
     contentHash: sha(content),
   }))
+}
+
+function parseAffiliations(meta: Record<string, unknown>): ParsedAffiliation[] {
+  const affs = meta.affiliations
+  if (!Array.isArray(affs)) return []
+  const out: ParsedAffiliation[] = []
+  for (const a of affs) {
+    if (a && typeof a === 'object') {
+      const e = a as Record<string, unknown>
+      if (e.target == null) continue // a malformed affiliation with no target is skipped, not crashed
+      out.push({
+        target: String(e.target),
+        role: e.role == null ? '' : String(e.role),
+        category: e.category == null ? null : String(e.category),
+        source: e.source == null ? 'human' : String(e.source),
+        context: e.context == null ? '' : String(e.context),
+      })
+    }
+  }
+  return out
+}
+
+// Sibling of chunkMarkdown: same chunks, plus the structured affiliations + entity type
+// the knowledge graph needs at index time (I2). Non-entity files get type=null, affiliations=[].
+export function parseEntityFile(sourcePath: string, raw: string, maxChars = 2000): ParsedEntityFile {
+  const chunks = chunkMarkdown(sourcePath, raw, maxChars)
+  let metadata: Record<string, unknown> = {}
+  try { metadata = matter(raw).data as Record<string, unknown> } catch { metadata = {} }
+  const typeRaw = metadata.type == null ? null : String(metadata.type)
+  const isEntity = typeRaw != null && ENTITY_TYPES.has(typeRaw)
+  return {
+    chunks,
+    type: isEntity ? typeRaw : null,
+    affiliations: isEntity ? parseAffiliations(metadata) : [],
+  }
 }

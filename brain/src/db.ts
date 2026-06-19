@@ -39,6 +39,21 @@ export async function initSchema(db: PGlite, dims: number): Promise<void> {
       value TEXT NOT NULL,
       updated_at TIMESTAMPTZ DEFAULT now()
     );
+    CREATE TABLE IF NOT EXISTS edges (
+      id          SERIAL PRIMARY KEY,
+      from_path   TEXT NOT NULL,
+      to_path     TEXT,
+      to_raw      TEXT NOT NULL,
+      role        TEXT NOT NULL DEFAULT '',
+      category    TEXT,
+      source      TEXT NOT NULL DEFAULT 'human',
+      context     TEXT NOT NULL DEFAULT '',
+      resolved    BOOLEAN NOT NULL DEFAULT false,
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+      CONSTRAINT edges_unique UNIQUE NULLS NOT DISTINCT (from_path, to_raw, role, source)
+    );
+    CREATE INDEX IF NOT EXISTS edges_from_idx ON edges (from_path);
+    CREATE INDEX IF NOT EXISTS edges_to_idx   ON edges (to_path);
   `)
 }
 
@@ -106,9 +121,112 @@ export async function setMeta(db: PGlite, key: string, value: string): Promise<v
   )
 }
 
+export interface EdgeInput {
+  fromPath: string
+  toPath: string | null
+  toRaw: string
+  role: string
+  category: string | null
+  source: string
+  context: string
+  resolved: boolean
+}
+
+export interface EdgeRow {
+  id: number
+  from_path: string
+  to_path: string | null
+  to_raw: string
+  role: string
+  category: string | null
+  source: string
+  context: string
+  resolved: boolean
+}
+
+export async function insertEdge(db: PGlite, e: EdgeInput): Promise<void> {
+  await db.query(
+    `INSERT INTO edges (from_path, to_path, to_raw, role, category, source, context, resolved)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     ON CONFLICT ON CONSTRAINT edges_unique DO NOTHING`,
+    [e.fromPath, e.toPath, e.toRaw, e.role, e.category, e.source, e.context, e.resolved],
+  )
+}
+
+export async function deleteFileEdges(db: PGlite, fromPath: string): Promise<void> {
+  await db.query(`DELETE FROM edges WHERE from_path = $1`, [fromPath])
+}
+
+export async function listEdgesFrom(db: PGlite, fromPath: string): Promise<EdgeRow[]> {
+  const res = await db.query<EdgeRow>(`SELECT * FROM edges WHERE from_path = $1 ORDER BY id`, [fromPath])
+  return res.rows
+}
+
 export async function deleteFileChunks(db: PGlite, path: string): Promise<void> {
   await db.query(`DELETE FROM chunks WHERE source_path = $1`, [path])
+  await db.query(`DELETE FROM edges WHERE from_path = $1`, [path])
   await db.query(`DELETE FROM files WHERE path = $1`, [path])
+}
+
+export interface TraverseOpts {
+  direction?: 'out' | 'in' | 'both'
+  depth?: number
+  role?: string
+  source?: string
+  category?: string
+}
+export interface TraverseRow {
+  from: string
+  to: string | null
+  to_raw: string
+  role: string
+  source: string
+  category: string | null
+  hop: number
+  resolved: boolean
+}
+
+export async function traverseEdges(db: PGlite, seed: string, opts: TraverseOpts = {}): Promise<TraverseRow[]> {
+  const direction = opts.direction ?? 'both'
+  const depth = opts.depth ?? 1
+  // Edge-match predicate for the recursive step, parameterized by direction.
+  // out:  e.from_path = frontier.node
+  // in:   e.to_path   = frontier.node
+  // both: either side matches; the "next node" is the OTHER endpoint.
+  const res = await db.query<TraverseRow>(
+    `
+    WITH RECURSIVE walk AS (
+      SELECT $1::text AS node, ARRAY[$1::text] AS visited, 0 AS hop
+      UNION ALL
+      SELECT
+        CASE WHEN e.from_path = w.node THEN e.to_path ELSE e.from_path END AS node,
+        w.visited || (CASE WHEN e.from_path = w.node THEN e.to_path ELSE e.from_path END),
+        w.hop + 1
+      FROM walk w
+      JOIN edges e ON (
+        ($2 = 'out'  AND e.from_path = w.node) OR
+        ($2 = 'in'   AND e.to_path   = w.node) OR
+        ($2 = 'both' AND (e.from_path = w.node OR e.to_path = w.node))
+      )
+      WHERE w.hop < $3
+        AND (CASE WHEN e.from_path = w.node THEN e.to_path ELSE e.from_path END) IS NOT NULL
+        AND NOT ((CASE WHEN e.from_path = w.node THEN e.to_path ELSE e.from_path END) = ANY (w.visited))
+    )
+    SELECT e.from_path AS "from", e.to_path AS "to", e.to_raw AS "to_raw", e.role, e.source, e.category, w.hop + 1 AS hop, e.resolved
+    FROM walk w
+    JOIN edges e ON (
+      ($2 = 'out'  AND e.from_path = w.node) OR
+      ($2 = 'in'   AND e.to_path   = w.node) OR
+      ($2 = 'both' AND (e.from_path = w.node OR e.to_path = w.node))
+    )
+    WHERE w.hop < $3
+      AND ($4::text IS NULL OR e.role = $4)
+      AND ($5::text IS NULL OR e.source = $5)
+      AND ($6::text IS NULL OR e.category = $6)
+    `,
+    [seed, direction, depth, opts.role ?? null, opts.source ?? null, opts.category ?? null],
+  )
+  return res.rows
 }
 
 export async function listIndexedPaths(db: PGlite): Promise<string[]> {

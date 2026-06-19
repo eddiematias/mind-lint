@@ -130,3 +130,43 @@ describe('chunkMarkdown', () => {
     expect(chunks[0].content).toContain('some thoughts.')
   })
 })
+
+import { parseEntityFile } from '../src/chunker.js'
+
+describe('parseEntityFile', () => {
+  const jbr = [
+    '---', 'type: company', 'affiliations:',
+    '  - target: "[[Jeff Perera]]"', '    role: founded', '    category: business', '    source: human', '    context: ""',
+    '  - target: "[[Otus Coffee]]"', '    role: acquired', '    category: business', '    source: human', '    context: ""',
+    '---', '', '## Snapshot', 'A bagel company.',
+  ].join('\n')
+
+  it('returns chunks identical to chunkMarkdown plus parsed affiliations and type', () => {
+    const parsed = parseEntityFile('wiki/companies/JBR.md', jbr, 2000)
+    const direct = chunkMarkdown('wiki/companies/JBR.md', jbr, 2000)
+    expect(parsed.chunks.map((c) => c.content)).toEqual(direct.map((c) => c.content))
+    expect(parsed.type).toBe('company')
+    expect(parsed.affiliations).toHaveLength(2)
+    expect(parsed.affiliations[0]).toMatchObject({ target: '[[Jeff Perera]]', role: 'founded', category: 'business', source: 'human' })
+  })
+
+  it('entity with affiliations: [] returns an empty affiliations array', () => {
+    const solo = ['---', 'type: project', 'affiliations: []', '---', '', '## X', 'body.'].join('\n')
+    const parsed = parseEntityFile('wiki/projects/Solo.md', solo, 2000)
+    expect(parsed.type).toBe('project')
+    expect(parsed.affiliations).toEqual([])
+  })
+
+  it('non-entity file returns type null and no affiliations', () => {
+    const note = '---\ntitle: Note\n---\n## H\nbody.\n'
+    const parsed = parseEntityFile('memory/x.md', note, 2000)
+    expect(parsed.type).toBeNull()
+    expect(parsed.affiliations).toEqual([])
+  })
+
+  it('keeps an unresolved-looking target verbatim (resolution happens later, in the indexer)', () => {
+    const e = ['---', 'type: person', 'affiliations:', '  - target: "[[Nobody]]"', '    role: knows', '---', '', '## S', 'b.'].join('\n')
+    const parsed = parseEntityFile('wiki/people/P.md', e, 2000)
+    expect(parsed.affiliations[0].target).toBe('[[Nobody]]')
+  })
+})

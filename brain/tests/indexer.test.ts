@@ -68,3 +68,63 @@ describe('indexVault', () => {
     expect(forced.filesSkipped).toBe(0)
   })
 })
+
+// `resolve` is already imported near the top of indexer.test.ts — do NOT add a
+// second `node:path` import; reuse the existing one.
+import { listEdgesFrom } from '../src/db.js'
+
+// SEPARATE fixture root — keeps the existing toBe(2) file-count assertions (which run
+// against the shared fixtures/vault/) untouched. Do NOT reuse the file's `vaultRoot`.
+const graphVaultRoot = resolve(__dirname, 'fixtures/graph-vault')
+const entityCfg = { vaultRoot: graphVaultRoot, scopeGlobs: ['wiki/**/*.md'] }
+
+describe('indexVault edge-building', () => {
+  let db: PGlite
+  beforeEach(async () => { db = await openDb(''); await initSchema(db, 768) })
+
+  it('builds edges from entity affiliations at index time', async () => {
+    await indexVault(db, new FakeEmbedder(768), entityCfg, 2000)
+    const jbrEdges = await listEdgesFrom(db, 'wiki/companies/JBR.md')
+    expect(jbrEdges.map((e) => e.to_raw).sort()).toEqual(['[[Jeff Perera]]', '[[Nobody Profiled]]', '[[Otus Coffee]]'])
+  })
+
+  it('resolves a [[target]] to its entity file path; an unprofiled target stays unresolved', async () => {
+    await indexVault(db, new FakeEmbedder(768), entityCfg, 2000)
+    const edges = await listEdgesFrom(db, 'wiki/companies/JBR.md')
+    const jeff = edges.find((e) => e.to_raw === '[[Jeff Perera]]')!
+    expect(jeff.resolved).toBe(true)
+    expect(jeff.to_path).toBe('wiki/people/Jeff Perera.md')
+    const ghost = edges.find((e) => e.to_raw === '[[Nobody Profiled]]')!
+    expect(ghost.resolved).toBe(false)
+    expect(ghost.to_path).toBeNull()
+  })
+
+  it('basename collision resolves people > companies > projects', async () => {
+    // Jeff declares [[JBR]]; both wiki/companies/JBR.md and wiki/projects/JBR.md exist.
+    // people>companies>projects → company wins over project (no people/JBR.md), so the company file.
+    await indexVault(db, new FakeEmbedder(768), entityCfg, 2000)
+    const jeff = await listEdgesFrom(db, 'wiki/people/Jeff Perera.md')
+    expect(jeff[0].to_path).toBe('wiki/companies/JBR.md')
+  })
+
+  it('an entity with affiliations: [] produces no edges', async () => {
+    await indexVault(db, new FakeEmbedder(768), entityCfg, 2000)
+    expect(await listEdgesFrom(db, 'wiki/companies/Otus Coffee.md')).toEqual([])
+  })
+
+  it('re-indexing does NOT duplicate edges (delete+insert rebuild)', async () => {
+    await indexVault(db, new FakeEmbedder(768), entityCfg, 2000)
+    await indexVault(db, new FakeEmbedder(768), entityCfg, 2000)
+    expect(await listEdgesFrom(db, 'wiki/companies/JBR.md')).toHaveLength(3)
+  })
+
+  it('rebuilds edges on an already-indexed corpus even when every file is hash-skipped (I3 decoupling)', async () => {
+    const first = await indexVault(db, new FakeEmbedder(768), entityCfg, 2000)
+    expect(first.filesIndexed).toBeGreaterThan(0)
+    // Wipe edges only (simulate a graph schema add to an existing index), keep file hashes.
+    await db.query(`DELETE FROM edges`)
+    const second = await indexVault(db, new FakeEmbedder(768), entityCfg, 2000)
+    expect(second.filesSkipped).toBeGreaterThan(0) // chunks were skipped...
+    expect(await listEdgesFrom(db, 'wiki/companies/JBR.md')).toHaveLength(3) // ...but edges rebuilt anyway
+  })
+})

@@ -51,3 +51,36 @@ Scan directories and update index files to match what actually exists. Run this 
 
 6. Report what was added, what was flagged, and confirm all indexes (compiled-pages and
    the three entity rosters) are current.
+
+7. Regenerate the derived `## Connections` region for each entity file (net-new behavior;
+   the brain service stays read-only on the vault, so this markdown transform runs here).
+   For EACH .md file under wiki/people/, wiki/companies/, wiki/projects/ (excluding _index.md):
+   - Read the file's `affiliations` frontmatter.
+   - If `affiliations` is empty or absent: ensure NO `## Connections` region exists (remove a
+     stale one if present, between its `<!-- BEGIN connections ... -->` / `<!-- END connections -->`
+     markers, including the `## Connections` heading AND the single blank line that preceded it).
+     Write nothing otherwise. (M4) An edgeless person keeps its recent-threads markers (from the
+     marker migration) but gets NO Connections region.
+   - Otherwise build the region body: group affiliations by `role`, and for each role emit
+     `- <role> → [[Target1]], [[Target2]]` using each affiliation's verbatim `target` wikilink.
+   - EXACT byte layout (pin it): the region is `<BEGIN-marker>\n## Connections\n<one line per role>\n<END-marker>`,
+     i.e.
+     ```
+     <!-- BEGIN connections (auto-generated from affiliations: do not edit) -->
+     ## Connections
+     - <role> → [[...]], [[...]]
+     <!-- END connections -->
+     ```
+   - Placement: the region goes at the BOTTOM of the file, separated from the preceding content by
+     EXACTLY ONE blank line. For people files, that preceding content ends at the
+     `<!-- END recent-threads -->` marker (guaranteed present by the marker migration), so the region
+     goes after it. For companies/projects (no recent-threads region), it is simply the last block.
+   - The file ends with EXACTLY ONE trailing `\n` after `<!-- END connections -->`. No second blank
+     line, no trailing whitespace.
+   - Write only the managed region (and its single leading blank line): if a region already exists,
+     replace it in place and leave every other byte (frontmatter, human sections, the recent-threads
+     region) byte-identical. If no region exists, append one with the layout above.
+   - Normalize the file to end with exactly one trailing newline (M-newline), so repeated runs are
+     byte-idempotent on files that today end without a trailing blank line (e.g. wiki/companies/JBR.md).
+   - This region is a regenerated VIEW of the `affiliations` source of truth, not a second
+     source: never hand-edit it, and never write wikilinks into human-authored prose sections.

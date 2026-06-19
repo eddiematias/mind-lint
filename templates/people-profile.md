@@ -44,5 +44,7 @@ affiliations:
 
 ## Recent threads
 
+<!-- BEGIN recent-threads (managed by /people-sync: do not edit between markers) -->
 <!-- Rolling 60-day window. Refreshed by /people-sync. The only section
      /people-sync writes freely (still per-candidate approval). -->
+<!-- END recent-threads -->

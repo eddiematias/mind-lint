@@ -76,7 +76,7 @@ For each candidate, ask the user one of:
 
 - **Verbatim quotes from iMessage stay quoted.** When writing a Recent thread entry, distinguish topic summary (agent prose) from message quotes (in quotes, attributed by speaker).
 - **History entries are dated.** Format: `- YYYY-MM-DD: <event description>`. The user confirms the date.
-- **Recent threads is rewritten on each run.** Rolling window, not append-only.
+- **Recent threads is rewritten on each run, strictly between the `<!-- BEGIN recent-threads -->` and `<!-- END recent-threads -->` markers.** Rolling window, not append-only. Never write outside the markers; never delete the markers. The markers are guaranteed present on every profile (new ones from the template, the 5 live ones from the marker migration), so /people-sync can assume them, it does NOT insert markers itself.
 - **History is append-only.** New entries match the existing convention in that profile (chronological top or bottom). Read the profile to detect the pattern; ask if ambiguous.
 - **Always show the proposed diff** before writing.
 - **Update `last-synced-imessage`** in frontmatter to today's date after the run.
@@ -94,6 +94,7 @@ For each candidate, ask the user one of:
 - Does NOT auto-categorize messages by sentiment. The user decides what's a milestone, not the agent.
 - Does NOT sync multiple profiles in one run. One person at a time.
 - Does NOT write into `journal/` (read-only substrate per error rule #11).
+- Does NOT touch the `## Connections` region (graph-managed, written by /reindex between its own `<!-- BEGIN/END connections -->` markers). /people-sync writes only between the recent-threads markers.
 - Does NOT commit raw exports. `raw/imessage/` is gitignored; verify after each run.
 
 ## When to run
