@@ -39,6 +39,21 @@ export async function initSchema(db: PGlite, dims: number): Promise<void> {
       value TEXT NOT NULL,
       updated_at TIMESTAMPTZ DEFAULT now()
     );
+    CREATE TABLE IF NOT EXISTS edges (
+      id          SERIAL PRIMARY KEY,
+      from_path   TEXT NOT NULL,
+      to_path     TEXT,
+      to_raw      TEXT NOT NULL,
+      role        TEXT NOT NULL DEFAULT '',
+      category    TEXT,
+      source      TEXT NOT NULL DEFAULT 'human',
+      context     TEXT NOT NULL DEFAULT '',
+      resolved    BOOLEAN NOT NULL DEFAULT false,
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+      CONSTRAINT edges_unique UNIQUE NULLS NOT DISTINCT (from_path, to_raw, role, source)
+    );
+    CREATE INDEX IF NOT EXISTS edges_from_idx ON edges (from_path);
+    CREATE INDEX IF NOT EXISTS edges_to_idx   ON edges (to_path);
   `)
 }
 
