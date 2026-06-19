@@ -121,8 +121,50 @@ export async function setMeta(db: PGlite, key: string, value: string): Promise<v
   )
 }
 
+export interface EdgeInput {
+  fromPath: string
+  toPath: string | null
+  toRaw: string
+  role: string
+  category: string | null
+  source: string
+  context: string
+  resolved: boolean
+}
+
+export interface EdgeRow {
+  id: number
+  from_path: string
+  to_path: string | null
+  to_raw: string
+  role: string
+  category: string | null
+  source: string
+  context: string
+  resolved: boolean
+}
+
+export async function insertEdge(db: PGlite, e: EdgeInput): Promise<void> {
+  await db.query(
+    `INSERT INTO edges (from_path, to_path, to_raw, role, category, source, context, resolved)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     ON CONFLICT ON CONSTRAINT edges_unique DO NOTHING`,
+    [e.fromPath, e.toPath, e.toRaw, e.role, e.category, e.source, e.context, e.resolved],
+  )
+}
+
+export async function deleteFileEdges(db: PGlite, fromPath: string): Promise<void> {
+  await db.query(`DELETE FROM edges WHERE from_path = $1`, [fromPath])
+}
+
+export async function listEdgesFrom(db: PGlite, fromPath: string): Promise<EdgeRow[]> {
+  const res = await db.query<EdgeRow>(`SELECT * FROM edges WHERE from_path = $1 ORDER BY id`, [fromPath])
+  return res.rows
+}
+
 export async function deleteFileChunks(db: PGlite, path: string): Promise<void> {
   await db.query(`DELETE FROM chunks WHERE source_path = $1`, [path])
+  await db.query(`DELETE FROM edges WHERE from_path = $1`, [path])
   await db.query(`DELETE FROM files WHERE path = $1`, [path])
 }
 
