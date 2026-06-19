@@ -6,6 +6,35 @@ import { z } from 'zod'
 import type { PGlite } from '@electric-sql/pglite'
 import type { Embedder, Reranker } from './types.js'
 import { retrieve } from './retriever.js'
+import { traverseEdges } from './db.js'
+
+const SUBTREE_RANK: Record<string, number> = { 'wiki/people/': 0, 'wiki/companies/': 1, 'wiki/projects/': 2 }
+
+// Resolve a "[[Name]]" or bare "Name" to a seed entity path, scoped to the three
+// subtrees, with the people > companies > projects collision tiebreak. Resolves against
+// the INDEXED FILE SET (the `files` table), which includes edgeless entity files — so a
+// real-but-edgeless entity (e.g. Amara, affiliations: []) resolves and traversal returns
+// an honest empty, distinguishable from a non-existent entity. Match is case-INsensitive.
+async function resolveSeed(db: PGlite, entity: string): Promise<string | null> {
+  if (entity.startsWith('wiki/') && entity.endsWith('.md')) return entity // already a path
+  const base = entity.replace(/^\[\[/, '').replace(/\]\]$/, '').trim().toLowerCase()
+  const res = await db.query<{ path: string }>(`SELECT path FROM files`)
+  const candidates = res.rows
+    .map((r) => r.path)
+    .filter(
+      (p) =>
+        /^wiki\/(people|companies|projects)\//.test(p) &&
+        !/\/_index\.md$/.test(p) && // roster files are not entities (and all share basename _index)
+        p.replace(/\.md$/i, '').split('/').pop()!.toLowerCase() === base,
+    )
+  if (candidates.length === 0) return null
+  candidates.sort((a, b) => {
+    const ra = SUBTREE_RANK[Object.keys(SUBTREE_RANK).find((d) => a.startsWith(d))!]
+    const rb = SUBTREE_RANK[Object.keys(SUBTREE_RANK).find((d) => b.startsWith(d))!]
+    return ra - rb
+  })
+  return candidates[0]
+}
 
 const SYNTH_HINT =
   'These are ranked evidence chunks from the vault. Synthesize a cited answer (reference sourcePath) and end with a short gap analysis of what is missing or stale.'
@@ -22,6 +51,28 @@ export function buildServer(db: PGlite, embedder: Embedder, reranker: Reranker):
     const hits = await retrieve(db, embedder, reranker, query, k ?? 8)
     return { content: [{ type: 'text', text: JSON.stringify({ instruction: SYNTH_HINT, evidence: hits }, null, 2) }] }
   })
+
+  server.tool(
+    'connections',
+    {
+      entity: z.string(),
+      direction: z.enum(['out', 'in', 'both']).optional(),
+      depth: z.number().optional(),
+      role: z.string().optional(),
+      source: z.string().optional(),
+      category: z.string().optional(),
+    },
+    async ({ entity, direction, depth, role, source, category }) => {
+      const seed = await resolveSeed(db, entity)
+      if (!seed) {
+        // Unresolved: no such entity file. Distinct from a resolved-but-edgeless entity.
+        return { content: [{ type: 'text', text: JSON.stringify({ entity, resolved: false, seed: null, rows: [] }) }] }
+      }
+      // Resolved: real entity. `rows` may legitimately be empty (edgeless entity, e.g. Amara).
+      const rows = await traverseEdges(db, seed, { direction, depth, role, source, category })
+      return { content: [{ type: 'text', text: JSON.stringify({ entity, resolved: true, seed, rows }) }] }
+    },
+  )
 
   return server
 }

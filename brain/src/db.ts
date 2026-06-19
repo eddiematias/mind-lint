@@ -178,6 +178,7 @@ export interface TraverseOpts {
 export interface TraverseRow {
   from: string
   to: string | null
+  to_raw: string
   role: string
   source: string
   category: string | null
@@ -211,7 +212,7 @@ export async function traverseEdges(db: PGlite, seed: string, opts: TraverseOpts
         AND (CASE WHEN e.from_path = w.node THEN e.to_path ELSE e.from_path END) IS NOT NULL
         AND NOT ((CASE WHEN e.from_path = w.node THEN e.to_path ELSE e.from_path END) = ANY (w.visited))
     )
-    SELECT e.from_path AS "from", e.to_path AS "to", e.role, e.source, e.category, w.hop + 1 AS hop, e.resolved
+    SELECT e.from_path AS "from", e.to_path AS "to", e.to_raw AS "to_raw", e.role, e.source, e.category, w.hop + 1 AS hop, e.resolved
     FROM walk w
     JOIN edges e ON (
       ($2 = 'out'  AND e.from_path = w.node) OR
