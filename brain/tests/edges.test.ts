@@ -65,3 +65,52 @@ describe('edge CRUD', () => {
     expect(await listEdgesFrom(db, 'wiki/companies/Gone.md')).toHaveLength(0)
   })
 })
+
+import { insertEdge as ins, traverseEdges } from '../src/db.js'
+
+async function seedGraph(db: PGlite) {
+  // JBR → Jeff (founded), JBR → Otus (acquired), Jeff → JBR (founded), Otus → DownstreamCafe (supplies)
+  const E = (fromPath: string, toPath: string, toRaw: string, role: string) =>
+    ins(db, { fromPath, toPath, toRaw, role, category: 'business', source: 'human', context: '', resolved: true })
+  await E('wiki/companies/JBR.md', 'wiki/people/Jeff Perera.md', '[[Jeff Perera]]', 'founded')
+  await E('wiki/companies/JBR.md', 'wiki/companies/Otus Coffee.md', '[[Otus Coffee]]', 'acquired')
+  await E('wiki/people/Jeff Perera.md', 'wiki/companies/JBR.md', '[[JBR]]', 'founded')
+  await E('wiki/companies/Otus Coffee.md', 'wiki/projects/DownstreamCafe.md', '[[DownstreamCafe]]', 'supplies')
+}
+
+describe('traverseEdges', () => {
+  let db: PGlite
+  beforeEach(async () => { db = await openDb(''); await initSchema(db, 768); await seedGraph(db) })
+
+  it('direction:out lists outgoing 1-hop edges', async () => {
+    const rows = await traverseEdges(db, 'wiki/companies/JBR.md', { direction: 'out', depth: 1 })
+    expect(rows.map((r) => r.to).sort()).toEqual(['wiki/companies/Otus Coffee.md', 'wiki/people/Jeff Perera.md'])
+  })
+
+  it('direction:in lists incoming 1-hop edges (reverse join flip)', async () => {
+    const rows = await traverseEdges(db, 'wiki/companies/JBR.md', { direction: 'in', depth: 1 })
+    expect(rows.map((r) => r.from)).toContain('wiki/people/Jeff Perera.md')
+  })
+
+  it('direction:both surfaces the connection either way', async () => {
+    const rows = await traverseEdges(db, 'wiki/people/Jeff Perera.md', { direction: 'both', depth: 1 })
+    // Jeff→JBR (out) and JBR→Jeff (in) both surface JBR as the connected endpoint
+    expect(rows.some((r) => r.to === 'wiki/companies/JBR.md' || r.from === 'wiki/companies/JBR.md')).toBe(true)
+  })
+
+  it('depth:2 returns a multi-hop walk (JBR → Otus → DownstreamCafe)', async () => {
+    const rows = await traverseEdges(db, 'wiki/companies/JBR.md', { direction: 'out', depth: 2 })
+    expect(rows.some((r) => r.to === 'wiki/projects/DownstreamCafe.md' && r.hop === 2)).toBe(true)
+  })
+
+  it('a role filter narrows the result set', async () => {
+    const rows = await traverseEdges(db, 'wiki/companies/JBR.md', { direction: 'out', depth: 1, role: 'acquired' })
+    expect(rows.map((r) => r.to)).toEqual(['wiki/companies/Otus Coffee.md'])
+  })
+
+  it('does not loop forever on a cycle (visited[] guard)', async () => {
+    // JBR↔Jeff is a 2-cycle; depth 5 must terminate.
+    const rows = await traverseEdges(db, 'wiki/companies/JBR.md', { direction: 'both', depth: 5 })
+    expect(Array.isArray(rows)).toBe(true) // terminates, no hang/throw
+  })
+})

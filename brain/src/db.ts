@@ -168,6 +168,66 @@ export async function deleteFileChunks(db: PGlite, path: string): Promise<void> 
   await db.query(`DELETE FROM files WHERE path = $1`, [path])
 }
 
+export interface TraverseOpts {
+  direction?: 'out' | 'in' | 'both'
+  depth?: number
+  role?: string
+  source?: string
+  category?: string
+}
+export interface TraverseRow {
+  from: string
+  to: string | null
+  role: string
+  source: string
+  category: string | null
+  hop: number
+  resolved: boolean
+}
+
+export async function traverseEdges(db: PGlite, seed: string, opts: TraverseOpts = {}): Promise<TraverseRow[]> {
+  const direction = opts.direction ?? 'both'
+  const depth = opts.depth ?? 1
+  // Edge-match predicate for the recursive step, parameterized by direction.
+  // out:  e.from_path = frontier.node
+  // in:   e.to_path   = frontier.node
+  // both: either side matches; the "next node" is the OTHER endpoint.
+  const res = await db.query<TraverseRow>(
+    `
+    WITH RECURSIVE walk AS (
+      SELECT $1::text AS node, ARRAY[$1::text] AS visited, 0 AS hop
+      UNION ALL
+      SELECT
+        CASE WHEN e.from_path = w.node THEN e.to_path ELSE e.from_path END AS node,
+        w.visited || (CASE WHEN e.from_path = w.node THEN e.to_path ELSE e.from_path END),
+        w.hop + 1
+      FROM walk w
+      JOIN edges e ON (
+        ($2 = 'out'  AND e.from_path = w.node) OR
+        ($2 = 'in'   AND e.to_path   = w.node) OR
+        ($2 = 'both' AND (e.from_path = w.node OR e.to_path = w.node))
+      )
+      WHERE w.hop < $3
+        AND (CASE WHEN e.from_path = w.node THEN e.to_path ELSE e.from_path END) IS NOT NULL
+        AND NOT ((CASE WHEN e.from_path = w.node THEN e.to_path ELSE e.from_path END) = ANY (w.visited))
+    )
+    SELECT e.from_path AS "from", e.to_path AS "to", e.role, e.source, e.category, w.hop + 1 AS hop, e.resolved
+    FROM walk w
+    JOIN edges e ON (
+      ($2 = 'out'  AND e.from_path = w.node) OR
+      ($2 = 'in'   AND e.to_path   = w.node) OR
+      ($2 = 'both' AND (e.from_path = w.node OR e.to_path = w.node))
+    )
+    WHERE w.hop < $3
+      AND ($4::text IS NULL OR e.role = $4)
+      AND ($5::text IS NULL OR e.source = $5)
+      AND ($6::text IS NULL OR e.category = $6)
+    `,
+    [seed, direction, depth, opts.role ?? null, opts.source ?? null, opts.category ?? null],
+  )
+  return res.rows
+}
+
 export async function listIndexedPaths(db: PGlite): Promise<string[]> {
   const res = await db.query<{ path: string }>(`SELECT path FROM files`)
   return res.rows.map((r) => r.path)
