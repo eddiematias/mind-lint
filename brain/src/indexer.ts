@@ -1,14 +1,53 @@
 import fg from 'fast-glob'
 import { readFile } from 'node:fs/promises'
-import { resolve } from 'node:path'
+import { resolve, basename } from 'node:path'
 import { createHash } from 'node:crypto'
 import type { PGlite } from '@electric-sql/pglite'
 import type { Embedder } from './types.js'
-import { chunkMarkdown, CHUNKER_VERSION } from './chunker.js'
-import { upsertChunk, getFileHash, setFileHash, deleteFileChunks, listIndexedPaths } from './db.js'
+import { chunkMarkdown, parseEntityFile, CHUNKER_VERSION } from './chunker.js'
+import {
+  upsertChunk, getFileHash, setFileHash, deleteFileChunks, deleteFileEdges,
+  insertEdge, listIndexedPaths,
+} from './db.js'
 
 function fileHash(s: string): string {
   return createHash('sha256').update(s).digest('hex')
+}
+
+const ENTITY_DIRS = ['wiki/people/', 'wiki/companies/', 'wiki/projects/']
+const SUBTREE_RANK: Record<string, number> = { 'wiki/people/': 0, 'wiki/companies/': 1, 'wiki/projects/': 2 }
+
+// Exclude the per-subtree roster files. wiki/{people,companies,projects}/_index.md are in
+// scope (scopeGlobs has wiki/**/*.md) but are rosters, not entities — and all three share
+// the basename "_index", which would otherwise log a 3-way collision every reindex and
+// needlessly enter the resolver. Mirrors the `grep -v _index` the /reindex and /people-sync
+// commands already use for these subtrees.
+function isEntityPath(rel: string): boolean {
+  return ENTITY_DIRS.some((d) => rel.startsWith(d)) && basename(rel) !== '_index.md'
+}
+
+// Build a basename → best entity path index honoring people > companies > projects.
+function buildResolver(entityPaths: string[]): Map<string, string> {
+  const byBase = new Map<string, string>()
+  for (const p of entityPaths) {
+    const base = basename(p, '.md')
+    const dir = ENTITY_DIRS.find((d) => p.startsWith(d))!
+    const existing = byBase.get(base)
+    if (!existing) {
+      byBase.set(base, p)
+    } else if (SUBTREE_RANK[dir] < SUBTREE_RANK[ENTITY_DIRS.find((d) => existing.startsWith(d))!]) {
+      console.warn(`[brain] basename collision for "${base}": ${dir} wins over ${existing}`)
+      byBase.set(base, p)
+    } else {
+      console.warn(`[brain] basename collision for "${base}": kept ${existing}, ignored ${p}`)
+    }
+  }
+  return byBase
+}
+
+// "[[Name]]" → bare "Name"
+function rawToBase(toRaw: string): string {
+  return toRaw.replace(/^\[\[/, '').replace(/\]\]$/, '').trim()
 }
 
 interface IndexCfg {
@@ -28,6 +67,8 @@ export async function indexVault(db: PGlite, embedder: Embedder, cfg: IndexCfg, 
   const chunkerVersion = cfg.chunkerVersion ?? CHUNKER_VERSION
   const matches = await fg(cfg.scopeGlobs, { cwd: cfg.vaultRoot, dot: true })
   const present = new Set(matches)
+  const entityPaths = matches.filter(isEntityPath)
+  const resolver = buildResolver(entityPaths)
   let filesIndexed = 0, filesSkipped = 0, filesRemoved = 0, chunksWritten = 0
 
   // prune files that no longer exist
@@ -50,6 +91,22 @@ export async function indexVault(db: PGlite, embedder: Embedder, cfg: IndexCfg, 
     }
     await setFileHash(db, rel, hash)
     filesIndexed++
+  }
+
+  // Edge pass (I3): unconditional over entity subtrees, NOT gated by the chunk skip-cache.
+  // Parsing frontmatter + inserting ~tens of rows is milliseconds and has zero embedding cost.
+  for (const rel of entityPaths) {
+    const raw = await readFile(resolve(cfg.vaultRoot, rel), 'utf8')
+    const { affiliations } = parseEntityFile(rel, raw, maxChars)
+    await deleteFileEdges(db, rel)
+    for (const a of affiliations) {
+      const base = rawToBase(a.target)
+      const toPath = resolver.get(base) ?? null
+      await insertEdge(db, {
+        fromPath: rel, toPath, toRaw: a.target, role: a.role,
+        category: a.category, source: a.source, context: a.context, resolved: toPath != null,
+      })
+    }
   }
   return { filesIndexed, filesSkipped, filesRemoved, chunksWritten }
 }
