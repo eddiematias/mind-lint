@@ -62,6 +62,24 @@ if [ -d "$CLAUDE_DIR/wiki" ]; then
     fi
 fi
 
+# Count pending derived edges (the brain's auto-derived graph backlinks awaiting review).
+# Reads the rendered artifact only (fast, offline). Counts "- " lines under ## Pending review,
+# stopping at the <!-- END pending --> marker (the pinned marker boundary from Task 8) or the
+# next ## heading, whichever comes first.
+if [ -f "$CLAUDE_DIR/wiki/_derived-edges.md" ]; then
+    PENDING=$(awk '
+        /^## Pending review/ { inblock=1; next }
+        /<!-- END pending -->/ { inblock=0 }
+        /^## / { inblock=0 }
+        inblock && /^- / { n++ }
+        END { print n+0 }
+    ' "$CLAUDE_DIR/wiki/_derived-edges.md")
+    PENDING=${PENDING:-0}
+    if [ "$PENDING" -gt 0 ]; then
+        echo "  $PENDING derived edge(s) since last review -- run /review-derived"
+    fi
+fi
+
 # Check error rules count
 if [ -f "$CLAUDE_DIR/rules/error-rules.md" ]; then
     RULES=$(grep -cE "^[0-9]+\." "$CLAUDE_DIR/rules/error-rules.md" 2>/dev/null || true)
