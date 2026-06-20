@@ -17,6 +17,10 @@ export interface ParsedAffiliation {
   source: string
   context: string
 }
+export interface ProseWikilink {
+  raw: string       // "[[Name]]" verbatim
+  context: string   // first matching line in document order, trimmed, <= 240 chars
+}
 export interface ParsedEntityFile {
   chunks: Chunk[]
   affiliations: ParsedAffiliation[]   // [] for non-entity files or entities with none
@@ -187,4 +191,38 @@ export function parseEntityFile(sourcePath: string, raw: string, maxChars = 2000
     type: isEntity ? typeRaw : null,
     affiliations: isEntity ? parseAffiliations(metadata) : [],
   }
+}
+
+// Body-prose [[wikilink]] scanner (I2). Two code guards so only genuine prose links derive:
+//  - fenced code blocks: reuses the same fence guard as splitSections (chunker.ts isFence);
+//    a [[Name]] inside a ``` / ~~~ block is an example, not an edge.
+//  - inline code spans (I-2): a [[Name]] inside backticks (e.g. `the [[JBR]] syntax`) is code,
+//    not prose, so the line's inline-backtick spans are stripped before scanning.
+// This vault, and the spec itself, contain many such examples. Context = the FIRST matching
+// line in document order (M1), trimmed to <= 240 chars, so reordered prose does not churn the
+// review artifact. De-dupes per distinct [[raw]] in this single file.
+const PROSE_FENCE = (l: string): boolean => {
+  const t = l.trimStart()
+  return t.startsWith('~~~') || (t.charCodeAt(0) === 96 && t.charCodeAt(1) === 96 && t.charCodeAt(2) === 96)
+}
+const WIKILINK_RE = /\[\[([^\]]+)\]\]/g
+const INLINE_CODE_RE = /`[^`]*`/g // I-2: inline backtick spans are code, not prose
+
+export function scanProseWikilinks(content: string): ProseWikilink[] {
+  const byRaw = new Map<string, string>() // raw -> first matching line (document order)
+  let inFence = false
+  for (const line of content.split('\n')) {
+    if (PROSE_FENCE(line)) { inFence = !inFence; continue }
+    if (inFence) continue
+    // I-2: strip inline-code spans before scanning so `[[JBR]]` inside backticks is NOT an edge.
+    // The visible context line keeps the original text; only the scan target is stripped.
+    const scanTarget = line.replace(INLINE_CODE_RE, '')
+    WIKILINK_RE.lastIndex = 0
+    let m: RegExpExecArray | null
+    while ((m = WIKILINK_RE.exec(scanTarget)) !== null) {
+      const raw = `[[${m[1].trim()}]]`
+      if (!byRaw.has(raw)) byRaw.set(raw, line.trim().slice(0, 240))
+    }
+  }
+  return [...byRaw.entries()].map(([raw, context]) => ({ raw, context }))
 }

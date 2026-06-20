@@ -1,6 +1,6 @@
 // brain/tests/chunker.test.ts
 import { describe, it, expect } from 'vitest'
-import { chunkMarkdown, CHUNKER_VERSION } from '../src/chunker.js'
+import { chunkMarkdown, CHUNKER_VERSION, scanProseWikilinks } from '../src/chunker.js'
 
 const doc = `---
 title: Test Note
@@ -168,5 +168,59 @@ describe('parseEntityFile', () => {
     const e = ['---', 'type: person', 'affiliations:', '  - target: "[[Nobody]]"', '    role: knows', '---', '', '## S', 'b.'].join('\n')
     const parsed = parseEntityFile('wiki/people/P.md', e, 2000)
     expect(parsed.affiliations[0].target).toBe('[[Nobody]]')
+  })
+})
+
+describe('scanProseWikilinks', () => {
+  it('extracts a body wikilink with its first matching line as context', () => {
+    const body = ['Worked on [[JBR]] today.', 'Then talked to [[Amara Markovic]].'].join('\n')
+    const hits = scanProseWikilinks(body)
+    expect(hits.map((h) => h.raw).sort()).toEqual(['[[Amara Markovic]]', '[[JBR]]'])
+    expect(hits.find((h) => h.raw === '[[JBR]]')!.context).toBe('Worked on [[JBR]] today.')
+  })
+
+  it('de-dupes a wikilink that appears multiple times, keeping the FIRST line (M1)', () => {
+    const body = ['First mention of [[JBR]] here.', 'noise', 'Second [[JBR]] mention.'].join('\n')
+    const hits = scanProseWikilinks(body)
+    expect(hits).toHaveLength(1)
+    expect(hits[0].context).toBe('First mention of [[JBR]] here.') // first in document order, not last
+  })
+
+  it('SKIPS wikilinks inside fenced code blocks (I2 fence guard)', () => {
+    const fence = String.fromCharCode(96, 96, 96)
+    const body = [
+      'Real mention of [[JBR]].',
+      fence,
+      'example: [[Not An Edge]] inside a fence',
+      fence,
+    ].join('\n')
+    const hits = scanProseWikilinks(body)
+    expect(hits.map((h) => h.raw)).toEqual(['[[JBR]]'])
+    expect(hits.some((h) => h.raw === '[[Not An Edge]]')).toBe(false)
+  })
+
+  it('also skips tilde-fenced blocks', () => {
+    const body = ['[[Kept]] line.', '~~~', '[[Dropped]] in tilde fence', '~~~'].join('\n')
+    expect(scanProseWikilinks(body).map((h) => h.raw)).toEqual(['[[Kept]]'])
+  })
+
+  it('SKIPS wikilinks inside inline code spans but KEEPS a bare prose link on the same fixture (I-2)', () => {
+    const body = [
+      'the `[[JBR]]` syntax is just an example',  // inline code: no edge
+      'but [[Amara Markovic]] is a real prose mention', // bare prose: edge
+    ].join('\n')
+    const hits = scanProseWikilinks(body)
+    expect(hits.map((h) => h.raw)).toEqual(['[[Amara Markovic]]'])
+    expect(hits.some((h) => h.raw === '[[JBR]]')).toBe(false)
+  })
+
+  it('truncates an over-long context line to <= 240 chars', () => {
+    const body = `pre [[JBR]] ` + 'x'.repeat(400)
+    const hits = scanProseWikilinks(body)
+    expect(hits[0].context.length).toBeLessThanOrEqual(240)
+  })
+
+  it('returns [] when there are no body wikilinks', () => {
+    expect(scanProseWikilinks('plain prose, no links')).toEqual([])
   })
 })
