@@ -62,34 +62,51 @@ describe('derivation integration', () => {
   })
 
   it('renders the FULL pending set past a single page; watermark covers the OLDEST, not just the newest (C-1)', async () => {
-    // Seed more than one page of derived edges with strictly increasing created_at, so a single
-    // capped page would drop the oldest. This guards the C-1 truncation bug: the artifact must
-    // render ALL pending edges and pending-through must equal max(ALL pending), so the oldest is
-    // rendered and counted, not advanced-past unshown.
-    const N = 1100 // > the 500 default cap, forces the paging path
+    // Seed N=1100 derived edges with EXPLICIT, strictly-increasing created_at (1 second apart) so
+    // seed-0000 is provably the oldest and all timestamps are distinct. Uses a direct SQL insert
+    // rather than upsertDerivedEdge (which uses DEFAULT now() and would produce clock-dependent,
+    // potentially tied timestamps). The edges_unique 4-tuple (from_path,to_raw,role,source) stays
+    // unique because from_path differs across rows.
+    const N = 1100
+    const BASE_MS = Date.UTC(2026, 0, 1) // 2026-01-01T00:00:00.000Z
     for (let i = 0; i < N; i++) {
-      await upsertDerivedEdge(db, {
-        fromPath: `journal/seed-${String(i).padStart(4, '0')}.md`,
-        toPath: 'wiki/companies/JBR.md', toRaw: `[[JBR]]`, role: 'references',
-        category: null, source: 'derived', context: `ctx ${i}`, resolved: true,
-      })
+      const ts = new Date(BASE_MS + i * 1000).toISOString()
+      await db.query(
+        `INSERT INTO edges (from_path, to_path, to_raw, role, category, source, context, resolved, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::timestamptz)`,
+        [
+          `journal/seed-${String(i).padStart(4, '0')}.md`,
+          'wiki/companies/JBR.md', '[[JBR]]', 'references', null,
+          'derived', `ctx ${i}`, true, ts,
+        ],
+      )
     }
-    // Page until exhausted (mirrors the /reindex render loop), accumulating ALL rows.
-    const all: { from_path: string; created_at: string }[] = []
-    let limit = 5000
+    // A single capped page (limit=500 < N=1100) returns only the 500 NEWEST rows, so the oldest
+    // seed-0000 is NOT present. This proves a single page drops the oldest row.
+    const onePage = await listDerivedEdges(db, null, 500)
+    expect(onePage.length).toBe(500)
+    expect(onePage.some((r) => r.from_path === 'journal/seed-0000.md')).toBe(false)
+
+    // Grow-the-limit paging: start BELOW N so the loop actually iterates and doubles at least once.
+    // After the loop, `all` contains every seeded row including seed-0000 (the oldest).
+    let limit = 500
+    let all: { from_path: string; created_at: Date | string }[] = []
     for (;;) {
       const page = await listDerivedEdges(db, null, limit)
-      all.length = 0
-      all.push(...page)
+      all = page
       if (page.length < limit) break
       limit *= 2
     }
-    expect(all.length).toBeGreaterThanOrEqual(N) // every seeded edge is rendered, none truncated
-    // pending-through = max(created_at among ALL rendered rows) covers the newest...
-    const pendingThrough = all.reduce((max, r) => (r.created_at > max ? r.created_at : max), all[0].created_at)
-    // ...and the OLDEST edge is in the rendered set (it would be lost by a single capped page).
-    const oldest = all.reduce((min, r) => (r.created_at < min ? r.created_at : min), all[0].created_at)
-    expect(all.some((r) => r.created_at === oldest)).toBe(true)
-    expect(pendingThrough >= oldest).toBe(true)
+    expect(all.length).toBe(N) // every seeded edge is rendered, none truncated
+    expect(all.some((r) => r.from_path === 'journal/seed-0000.md')).toBe(true) // oldest IS recovered
+
+    // pending-through = max(created_at) across ALL rendered rows. It must equal the newest
+    // seeded timestamp (seed-1099, BASE_MS + (N-1)*1000), proving the watermark covers the
+    // full set and the oldest was not advanced past unshown.
+    const pendingThrough = all.reduce(
+      (max, r) => (new Date(r.created_at).getTime() > new Date(max).getTime() ? r.created_at : max),
+      all[0].created_at,
+    )
+    expect(new Date(pendingThrough).getTime()).toBe(BASE_MS + (N - 1) * 1000)
   })
 })
