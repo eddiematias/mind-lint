@@ -288,6 +288,27 @@ export async function listIndexedPaths(db: PGlite): Promise<string[]> {
   return res.rows.map((r) => r.path)
 }
 
+export interface DerivedEdgeRow {
+  // created_at is a JS Date at runtime (PGlite returns TIMESTAMPTZ as Date); typed Date | string
+  // so callers normalize via new Date(x) rather than assuming a string. JSON.stringify serializes
+  // a Date to UTC ISO ("...Z"), which is exactly what the /reindex render + watermark rely on.
+  from_path: string; to_path: string | null; to_raw: string; role: string; context: string; created_at: Date | string
+}
+export async function listDerivedEdges(db: PGlite, since: string | null, limit: number): Promise<DerivedEdgeRow[]> {
+  const res = await db.query<DerivedEdgeRow>(
+    `SELECT from_path, to_path, to_raw, role, context, created_at FROM edges
+     WHERE source = 'derived' AND ($1::timestamptz IS NULL OR created_at > $1::timestamptz)
+     ORDER BY created_at DESC LIMIT $2`,
+    [since, limit],
+  )
+  return res.rows
+}
+export interface SuppressionRow { from_path: string; to_raw: string; role: string; reason: string; created_at: Date | string }
+export async function listSuppressions(db: PGlite): Promise<SuppressionRow[]> {
+  const res = await db.query<SuppressionRow>(`SELECT from_path, to_raw, role, reason, created_at FROM derived_suppressions ORDER BY created_at DESC`)
+  return res.rows
+}
+
 export async function getChunkContents(db: PGlite, ids: string[]): Promise<Row[]> {
   if (ids.length === 0) return []
   const res = await db.query<Row>(

@@ -158,7 +158,7 @@ describe('MCP HTTP bearer auth', () => {
   })
 })
 
-import { insertEdge } from '../src/db.js'
+import { insertEdge, upsertDerivedEdge, insertSuppression } from '../src/db.js'
 
 describe('connections MCP tool', () => {
   let server: Server
@@ -249,5 +249,54 @@ describe('connections MCP tool', () => {
     const p = await callPayload('connections', { entity: 'jbr', direction: 'out' })
     expect(p.resolved).toBe(true) // 'jbr' resolved to wiki/companies/JBR.md
     expect(p.rows.some((r) => r.to === 'wiki/people/Jeff Perera.md')).toBe(true)
+  })
+})
+
+describe('derived_edges MCP tool', () => {
+  let server: Server
+  let db: PGlite
+  let url: string
+
+  beforeAll(async () => {
+    db = await openDb(''); await initSchema(db, 768)
+    await upsertDerivedEdge(db, { fromPath: 'journal/2026-06-19.md', toPath: 'wiki/companies/JBR.md', toRaw: '[[JBR]]', role: 'references', category: null, source: 'derived', context: 'on [[JBR]] launch', resolved: true })
+    await insertSuppression(db, 'journal/old.md', '[[JBR]]', 'references', 'wrong target')
+    server = createMcpHttpServer(db, new FakeEmbedder(768), new NoopReranker())
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    const addr = server.address(); url = `http://127.0.0.1:${typeof addr === 'object' && addr ? addr.port : 0}/mcp`
+  })
+  afterAll(async () => { await new Promise<void>((resolve) => server.close(() => resolve())) })
+
+  const callTool = (name: string, args: Record<string, unknown>) =>
+    fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' }, body: JSON.stringify({ jsonrpc: '2.0', id: 9, method: 'tools/call', params: { name, arguments: args } }) })
+
+  it('lists the derived_edges tool', async () => {
+    const res = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' }, body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list' }) })
+    // Do NOT substring-match compact JSON (e.g. '"name":"derived_edges"') against the raw body:
+    // the SDK's serialization and SSE framing add whitespace/event lines that break the match.
+    // First log/inspect the raw body, then assert against the SDK's ACTUAL serialization by
+    // parsing the JSON and checking the tool name is present in the tools array.
+    const body = await res.text()
+    // Helper: the streamable-HTTP transport may answer JSON or an SSE frame ("data: {json}\n\n").
+    const json = JSON.parse(body.includes('data:') ? body.slice(body.indexOf('{'), body.lastIndexOf('}') + 1) : body)
+    const names = (json.result?.tools ?? []).map((t: { name: string }) => t.name)
+    expect(names).toContain('derived_edges')
+  })
+
+  it('returns derived edge rows and the suppression list', async () => {
+    const text = await (await callTool('derived_edges', {})).text()
+    expect(text).toContain('journal/2026-06-19.md')
+    expect(text).toContain('[[JBR]]')
+    expect(text).toContain('wrong target') // suppression surfaced
+  })
+
+  it('a since watermark in the future returns no pending rows', async () => {
+    const body = await (await callTool('derived_edges', { since: '2999-01-01T00:00:00Z' })).text()
+    // Parse the tool result and assert rows is empty, rather than substring-matching '"rows":[]'
+    // against the framed body (whitespace/SSE framing make the substring brittle). The tool
+    // result text is itself JSON.stringify({ rows, suppressions }).
+    const json = JSON.parse(body.includes('data:') ? body.slice(body.indexOf('{'), body.lastIndexOf('}') + 1) : body)
+    const payload = JSON.parse(json.result.content[0].text)
+    expect(payload.rows).toEqual([]) // rows empty; suppressions still present
   })
 })
