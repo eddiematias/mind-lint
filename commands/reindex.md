@@ -84,3 +84,92 @@ Scan directories and update index files to match what actually exists. Run this 
      byte-idempotent on files that today end without a trailing blank line (e.g. wiki/companies/JBR.md).
    - This region is a regenerated VIEW of the `affiliations` source of truth, not a second
      source: never hand-edit it, and never write wikilinks into human-authored prose sections.
+
+8. Render the derived-edges review artifact at `wiki/_derived-edges.md` (the exception channel
+   for slice-1 autonomous writes). The brain owns the edges; this step renders them vault-side
+   (the brain stays read-only on the vault). The byte layout is PINNED with HTML-comment markers
+   (see the "EXACT artifact layout" block below and the marker contract): a marker-fenced watermark
+   header (last-reviewed, pending-through), then the marker-fenced ## Pending review / ## History
+   / ## Suppressed regions.
+   - Read the EXISTING `wiki/_derived-edges.md` if present, and extract its `last-reviewed: <ISO>`
+     watermark line (from inside the `<!-- BEGIN watermark -->` region) and its ENTIRE
+     `<!-- BEGIN history -->` ... `<!-- END history -->` block VERBATIM (markers, heading, and
+     every existing `- ` line). If the file does not exist, the watermark is "never" (everything
+     is pending) and the History block starts empty (just the markers + heading).
+   - Call the `derived_edges` MCP tool (server `mind-lint-brain`) with `since` = the existing
+     watermark (omit `since` if the watermark is "never"). It returns `{ rows, suppressions }`.
+   - RENDER THE FULL PENDING SET, not a truncated page (C-1, M2). The tool signature is
+     `since` + `limit` (default 500). On the first run the whole historical vault derives at
+     once (likely more than 500 edges), so a single capped call would drop the oldest pending
+     edges below the fold; if `pending-through` were then set to the max of that truncated page,
+     the dropped edges would fall behind the watermark and never be reviewed. To avoid that,
+     PAGE until the result is exhausted: call `derived_edges` with an explicit large `limit`
+     (e.g. 5000); if the call returns exactly `limit` rows, call again with the same `since` and
+     a larger `limit` (the tool is a strict `created_at > since` lower-bound query with no offset
+     cursor, so growing `limit` is the only correct way to page deeper, never re-passing `since`)
+     and accumulate, repeating until fewer-than-`limit` rows come back. Accumulate ALL pending rows
+     across pages before rendering. (For a single-human vault one large-limit call almost always
+     suffices; the loop is the correctness guarantee that no edge is ever silently truncated.)
+   - If the tool is UNAVAILABLE (brain not running): SKIP this step, leave any existing
+     `wiki/_derived-edges.md` untouched, and note in the /reindex report "derived-edges artifact
+     skipped: brain unreachable." The rest of /reindex is unaffected. Do NOT write a partial file.
+   - Otherwise rewrite `wiki/_derived-edges.md` with these marker-fenced regions (keep all
+     `<!-- BEGIN ... -->` / `<!-- END ... -->` markers exactly as pinned):
+     - The `<!-- BEGIN watermark -->` region (two lines):
+       `last-reviewed: <the PRESERVED existing watermark, or "never">`. Never advance it here
+       (that is /review-derived's job, M2): read it from the existing file and write it back unchanged.
+       `pending-through: <the MAX created_at among the rows rendered below>`. Compute it from the
+       FULL accumulated pending set (all pages), not a single truncated page. If the set is
+       empty, carry the existing `last-reviewed` value forward (never regress below it). Because
+       the artifact renders the full pending set, max(shown) equals max(all pending); no edge is
+       ever advanced-past unshown.
+     - The `<!-- BEGIN pending -->` region (`## Pending review`): the FULL accumulated `rows`
+       (which are already `created_at > watermark`), grouped by target entity (`to_path` basename).
+       Each line: `- <from_path>: "<context>"`, single line, `- ` prefix, NO per-edge timestamp in
+       the visible line (pending-through is the machine-readable watermark). Lightweight: this is an
+       audit surface, not a gate. If empty, write "None." Regenerated in full between the markers.
+     - The `<!-- BEGIN history -->` region (`## History`): copy the PRESERVED existing History block
+       BYTE-FOR-BYTE (markers, heading, every prior `- ` line), and append a new line ONLY when there
+       is a delta (Att-6, see below). Insert any new line immediately BEFORE the `<!-- END history -->`
+       marker. Never rewrite, reorder, or reformat a prior History line.
+       - Delta gate (Att-6): append a History line ONLY when this render changed something:
+         N>0 new pending edges since the last render, OR a vanished/cleanup occurred (an edge or
+         suppression appeared or disappeared). On a true no-op reindex (nothing new, nothing
+         vanished, e.g. the scheduled Mini reindex on an unchanged corpus), append NOTHING, so
+         History does not fill with "rendered 0 pending" noise. When a line IS appended, it reads:
+         `- <today ISO date>: rendered N pending derived edge(s) across M source file(s); reviewed-through <watermark or never>`.
+     - The `<!-- BEGIN suppressed -->` region (`## Suppressed`): the returned `suppressions`, one
+       line each: `- <from_path> -> <to_raw> (<reason>)`. If empty, write "None." Regenerated in
+       full between the markers.
+   - EXACT artifact layout (pinned, byte-identical across all three writers):
+     ```
+     <!-- BEGIN watermark (auto-managed: do not edit) -->
+     last-reviewed: <ISO timestamp | never>
+     pending-through: <ISO timestamp | never>
+     <!-- END watermark -->
+
+     <!-- BEGIN pending (auto-generated: do not edit) -->
+     ## Pending review
+     - <from_path>: "<context>"
+     - <from_path>: "<context>"
+     <!-- END pending -->
+
+     <!-- BEGIN history (append-only: copy verbatim, only append before END) -->
+     ## History
+     - <ISO date>: <append-only log line>
+     <!-- END history -->
+
+     <!-- BEGIN suppressed (auto-generated: do not edit) -->
+     ## Suppressed
+     - <from_path> -> <to_raw> (<reason>)
+     <!-- END suppressed -->
+     ```
+   - Marker contract (I-3, mirrors the Connections-region precedent above): three writers touch
+     this file idempotently (/reindex rewrites watermark's pending-through + Pending + Suppressed
+     and PRESERVES History; /review-derived rewrites watermark's last-reviewed + appends one
+     History line; the SessionStart hook only READS Pending). Every machine-managed region is
+     wrapped in explicit `<!-- BEGIN <region> -->` / `<!-- END <region> -->` markers so no LLM
+     rewrite silently drops or reformats prior content. The watermark's `last-reviewed:` line is
+     strictly /review-derived's domain: /reindex reads it and writes it back UNCHANGED.
+   - This file is agent-owned (like wiki/_log.md); never treated as human substrate, never
+     hand-edited. It is the read surface for /review-derived and the SessionStart count.
