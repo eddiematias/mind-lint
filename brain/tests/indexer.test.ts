@@ -71,7 +71,7 @@ describe('indexVault', () => {
 
 // `resolve` is already imported near the top of indexer.test.ts — do NOT add a
 // second `node:path` import; reuse the existing one.
-import { listEdgesFrom, insertSuppression, deleteDerivedFileEdges } from '../src/db.js'
+import { listEdgesFrom, insertSuppression } from '../src/db.js'
 
 // SEPARATE fixture root — keeps the existing toBe(2) file-count assertions (which run
 // against the shared fixtures/vault/) untouched. Do NOT reuse the file's `vaultRoot`.
@@ -156,11 +156,11 @@ describe('indexVault derivation pass', () => {
     expect(edges.some((e) => e.to_raw === '[[Some Concept]]')).toBe(false)
   })
 
-  it('never writes a role:mentions edge (success criterion #6, reserved for slice 2)', async () => {
+  it('slice-1 derivation emits only role=references edges (criterion #6: mentions reserved)', async () => {
     await indexVault(db, new FakeEmbedder(768), derivCfg, 2000)
-    // The derivation pass must never emit role='mentions' — that is reserved for slice 2.
-    // (Human affiliation edges with role='mentions', e.g. from JBR.md, are unaffected by this check.)
-    const res = await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM edges WHERE role = 'mentions' AND source = 'derived'`)
+    // All derived edges must have role='references'. Any other role (mentions, etc.) is reserved for
+    // later slices. Human affiliation edges (source='human') may have other roles and are not checked here.
+    const res = await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM edges WHERE source = 'derived' AND role != 'references'`)
     expect(res.rows[0].n).toBe(0)
   })
 
