@@ -2,12 +2,14 @@ import fg from 'fast-glob'
 import { readFile } from 'node:fs/promises'
 import { resolve, basename } from 'node:path'
 import { createHash } from 'node:crypto'
+import matter from 'gray-matter'
 import type { PGlite } from '@electric-sql/pglite'
 import type { Embedder } from './types.js'
-import { chunkMarkdown, parseEntityFile, CHUNKER_VERSION } from './chunker.js'
+import { chunkMarkdown, parseEntityFile, scanProseWikilinks, CHUNKER_VERSION } from './chunker.js'
 import {
   upsertChunk, getFileHash, setFileHash, deleteFileChunks, deleteFileEdges,
   insertEdge, listIndexedPaths,
+  upsertDerivedEdge, isSuppressed, deleteAllFileEdges, listEdgesFrom,
 } from './db.js'
 
 function fileHash(s: string): string {
@@ -24,6 +26,25 @@ const SUBTREE_RANK: Record<string, number> = { 'wiki/people/': 0, 'wiki/companie
 // commands already use for these subtrees.
 function isEntityPath(rel: string): boolean {
   return ENTITY_DIRS.some((d) => rel.startsWith(d)) && basename(rel) !== '_index.md'
+}
+
+// A file is a derivation source if it is indexed (in scopeGlobs) but is NOT an entity file
+// and is NOT an agent-owned underscore file. raw/ is not in scopeGlobs so it never appears
+// here (C3). Two exclusion mechanisms, by DIFFERENT keys:
+//  (1) entity subtrees, by PREFIX: a path under wiki/{people,companies,projects}/ is an
+//      entity (or its _index.md roster) and is handled by the affiliations edge pass, not
+//      derivation. ENTITY_DIRS.startsWith covers these (the rosters too, implicitly).
+//  (2) agent-owned underscore files, by BASENAME: wiki/_derived-edges.md, wiki/_log.md,
+//      wiki/_index.md (and any people/companies/projects _index.md roster) are machine-written
+//      artifacts, not human prose. The review artifact in particular contains [[JBR]] verbatim
+//      (context snippets + Suppressed lines), so scanning it would derive
+//      wiki/_derived-edges.md -> JBR and pollute the very graph it audits (I-1, a self-referential
+//      loop). basename startsWith('_') excludes them explicitly. Mirrors the /reindex precedent
+//      that treats _index.md / _log.md as non-content.
+function isDerivationSource(rel: string): boolean {
+  if (ENTITY_DIRS.some((d) => rel.startsWith(d))) return false
+  if (basename(rel).startsWith('_')) return false
+  return true
 }
 
 // Build a basename → best entity path index honoring people > companies > projects.
@@ -73,7 +94,11 @@ export async function indexVault(db: PGlite, embedder: Embedder, cfg: IndexCfg, 
 
   // prune files that no longer exist
   for (const indexed of await listIndexedPaths(db)) {
-    if (!present.has(indexed)) { await deleteFileChunks(db, indexed); filesRemoved++ }
+    if (!present.has(indexed)) {
+      await deleteFileChunks(db, indexed)
+      await deleteAllFileEdges(db, indexed) // C1: a vanished file's derived edges go too
+      filesRemoved++
+    }
   }
 
   for (const rel of matches) {
@@ -108,5 +133,39 @@ export async function indexVault(db: PGlite, embedder: Embedder, cfg: IndexCfg, 
       })
     }
   }
+
+  // Derivation pass (slice 1): prose [[wikilink]] -> source=derived, role=references edges
+  // over NON-entity files. Unconditional (like the entity edge pass): rebuilds on a fully
+  // hash-skipped corpus. Reconcile via upsert against survivors (preserve created_at) +
+  // vanished-wikilink cleanup; never a blanket per-file pre-delete (that would reset
+  // created_at, breaking first-seen). Suppressed pairs are skipped (C1/M1/M2 channel).
+  for (const rel of matches) {
+    if (!isDerivationSource(rel)) continue
+    const raw = await readFile(resolve(cfg.vaultRoot, rel), 'utf8')
+    let content = raw
+    try { content = matter(raw).content } catch { content = raw }
+    const hits = scanProseWikilinks(content)
+    const survivors = new Set<string>() // to_raw values that resolved AND were not suppressed
+    for (const h of hits) {
+      const target = resolver.get(rawToBase(h.raw))
+      if (!target) continue // non-entity wikilink: skip
+      if (await isSuppressed(db, rel, h.raw, 'references')) continue
+      survivors.add(h.raw)
+      await upsertDerivedEdge(db, {
+        fromPath: rel, toPath: target, toRaw: h.raw, role: 'references',
+        category: null, source: 'derived', context: h.context, resolved: true,
+      })
+    }
+    // Vanished-wikilink cleanup: delete this file's derived edges whose to_raw is no longer present.
+    for (const e of await listEdgesFrom(db, rel)) {
+      if (e.source === 'derived' && e.role === 'references' && !survivors.has(e.to_raw)) {
+        await db.query(
+          `DELETE FROM edges WHERE from_path = $1 AND to_raw = $2 AND role = 'references' AND source = 'derived'`,
+          [rel, e.to_raw],
+        )
+      }
+    }
+  }
+
   return { filesIndexed, filesSkipped, filesRemoved, chunksWritten }
 }

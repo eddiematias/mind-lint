@@ -54,6 +54,14 @@ export async function initSchema(db: PGlite, dims: number): Promise<void> {
     );
     CREATE INDEX IF NOT EXISTS edges_from_idx ON edges (from_path);
     CREATE INDEX IF NOT EXISTS edges_to_idx   ON edges (to_path);
+    CREATE TABLE IF NOT EXISTS derived_suppressions (
+      from_path  TEXT NOT NULL,
+      to_raw     TEXT NOT NULL,
+      role       TEXT NOT NULL DEFAULT 'references',
+      reason     TEXT NOT NULL DEFAULT '',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (from_path, to_raw, role)
+    );
   `)
 }
 
@@ -164,8 +172,54 @@ export async function listEdgesFrom(db: PGlite, fromPath: string): Promise<EdgeR
 
 export async function deleteFileChunks(db: PGlite, path: string): Promise<void> {
   await db.query(`DELETE FROM chunks WHERE source_path = $1`, [path])
-  await db.query(`DELETE FROM edges WHERE from_path = $1`, [path])
+  // C1: only non-derived edges are tied to the per-file chunk rebuild. Derived edges are
+  // reconciled by the derivation pass (upsert against survivors), NOT blanket-wiped here.
+  await db.query(`DELETE FROM edges WHERE from_path = $1 AND source != 'derived'`, [path])
   await db.query(`DELETE FROM files WHERE path = $1`, [path])
+}
+
+// Full edge sweep for a file that VANISHED from the vault (prune path): drop ALL its edges,
+// derived included, since the file no longer exists to re-derive them.
+export async function deleteAllFileEdges(db: PGlite, path: string): Promise<void> {
+  await db.query(`DELETE FROM edges WHERE from_path = $1`, [path])
+}
+
+// C2: derived-edge upsert. Unlike insertEdge (DO NOTHING), this refreshes the context
+// excerpt on a re-confirmed edge while preserving created_at (the first-seen invariant the
+// review channel depends on). The named constraint is the 4-tuple incl. source.
+export async function upsertDerivedEdge(db: PGlite, e: EdgeInput): Promise<void> {
+  await db.query(
+    `INSERT INTO edges (from_path, to_path, to_raw, role, category, source, context, resolved)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     ON CONFLICT ON CONSTRAINT edges_unique DO UPDATE SET context = EXCLUDED.context`,
+    [e.fromPath, e.toPath, e.toRaw, e.role, e.category, e.source, e.context, e.resolved],
+  )
+}
+
+// C1: delete only this file's DERIVED edges. The derivation pass uses this so it never
+// touches human edges, and the per-file chunk path never touches derived edges.
+export async function deleteDerivedFileEdges(db: PGlite, fromPath: string): Promise<void> {
+  await db.query(`DELETE FROM edges WHERE from_path = $1 AND source = 'derived'`, [fromPath])
+}
+
+export async function isSuppressed(db: PGlite, fromPath: string, toRaw: string, role: string): Promise<boolean> {
+  const res = await db.query<{ c: number }>(
+    `SELECT count(*)::int AS c FROM derived_suppressions WHERE from_path = $1 AND to_raw = $2 AND role = $3`,
+    [fromPath, toRaw, role],
+  )
+  return res.rows[0].c > 0
+}
+
+export async function insertSuppression(db: PGlite, fromPath: string, toRaw: string, role: string, reason: string): Promise<void> {
+  await db.query(
+    `INSERT INTO derived_suppressions (from_path, to_raw, role, reason) VALUES ($1, $2, $3, $4)
+     ON CONFLICT (from_path, to_raw, role) DO UPDATE SET reason = EXCLUDED.reason`,
+    [fromPath, toRaw, role, reason],
+  )
+}
+
+export async function deleteSuppression(db: PGlite, fromPath: string, toRaw: string, role: string): Promise<void> {
+  await db.query(`DELETE FROM derived_suppressions WHERE from_path = $1 AND to_raw = $2 AND role = $3`, [fromPath, toRaw, role])
 }
 
 export interface TraverseOpts {
@@ -232,6 +286,27 @@ export async function traverseEdges(db: PGlite, seed: string, opts: TraverseOpts
 export async function listIndexedPaths(db: PGlite): Promise<string[]> {
   const res = await db.query<{ path: string }>(`SELECT path FROM files`)
   return res.rows.map((r) => r.path)
+}
+
+export interface DerivedEdgeRow {
+  // created_at is a JS Date at runtime (PGlite returns TIMESTAMPTZ as Date); typed Date | string
+  // so callers normalize via new Date(x) rather than assuming a string. JSON.stringify serializes
+  // a Date to UTC ISO ("...Z"), which is exactly what the /reindex render + watermark rely on.
+  from_path: string; to_path: string | null; to_raw: string; role: string; context: string; created_at: Date | string
+}
+export async function listDerivedEdges(db: PGlite, since: string | null, limit: number): Promise<DerivedEdgeRow[]> {
+  const res = await db.query<DerivedEdgeRow>(
+    `SELECT from_path, to_path, to_raw, role, context, created_at FROM edges
+     WHERE source = 'derived' AND ($1::timestamptz IS NULL OR created_at > $1::timestamptz)
+     ORDER BY created_at DESC LIMIT $2`,
+    [since, limit],
+  )
+  return res.rows
+}
+export interface SuppressionRow { from_path: string; to_raw: string; role: string; reason: string; created_at: Date | string }
+export async function listSuppressions(db: PGlite): Promise<SuppressionRow[]> {
+  const res = await db.query<SuppressionRow>(`SELECT from_path, to_raw, role, reason, created_at FROM derived_suppressions ORDER BY created_at DESC`)
+  return res.rows
 }
 
 export async function getChunkContents(db: PGlite, ids: string[]): Promise<Row[]> {

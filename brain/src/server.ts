@@ -6,7 +6,7 @@ import { z } from 'zod'
 import type { PGlite } from '@electric-sql/pglite'
 import type { Embedder, Reranker } from './types.js'
 import { retrieve } from './retriever.js'
-import { traverseEdges } from './db.js'
+import { traverseEdges, listDerivedEdges, listSuppressions, insertSuppression, deleteSuppression } from './db.js'
 
 const SUBTREE_RANK: Record<string, number> = { 'wiki/people/': 0, 'wiki/companies/': 1, 'wiki/projects/': 2 }
 
@@ -71,6 +71,36 @@ export function buildServer(db: PGlite, embedder: Embedder, reranker: Reranker):
       // Resolved: real entity. `rows` may legitimately be empty (edgeless entity, e.g. Amara).
       const rows = await traverseEdges(db, seed, { direction, depth, role, source, category })
       return { content: [{ type: 'text', text: JSON.stringify({ entity, resolved: true, seed, rows }) }] }
+    },
+  )
+
+  server.tool(
+    'derived_edges',
+    { since: z.string().optional(), limit: z.number().optional() },
+    async ({ since, limit }) => {
+      const rows = await listDerivedEdges(db, since ?? null, limit ?? 500)
+      const suppressions = await listSuppressions(db)
+      return { content: [{ type: 'text', text: JSON.stringify({ rows, suppressions }) }] }
+    },
+  )
+
+  server.tool(
+    'suppress_edge',
+    {
+      from_path: z.string(),
+      to_raw: z.string(),
+      role: z.string().optional(),
+      reason: z.string().optional(),
+      action: z.enum(['add', 'remove']).optional(),
+    },
+    async ({ from_path, to_raw, role, reason, action }) => {
+      const r = role ?? 'references'
+      if ((action ?? 'add') === 'remove') {
+        await deleteSuppression(db, from_path, to_raw, r)
+        return { content: [{ type: 'text', text: JSON.stringify({ ok: true, action: 'remove', from_path, to_raw, role: r }) }] }
+      }
+      await insertSuppression(db, from_path, to_raw, r, reason ?? '')
+      return { content: [{ type: 'text', text: JSON.stringify({ ok: true, action: 'add', from_path, to_raw, role: r }) }] }
     },
   )
 

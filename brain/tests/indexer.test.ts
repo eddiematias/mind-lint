@@ -71,12 +71,13 @@ describe('indexVault', () => {
 
 // `resolve` is already imported near the top of indexer.test.ts — do NOT add a
 // second `node:path` import; reuse the existing one.
-import { listEdgesFrom } from '../src/db.js'
+import { listEdgesFrom, insertSuppression } from '../src/db.js'
 
 // SEPARATE fixture root — keeps the existing toBe(2) file-count assertions (which run
 // against the shared fixtures/vault/) untouched. Do NOT reuse the file's `vaultRoot`.
 const graphVaultRoot = resolve(__dirname, 'fixtures/graph-vault')
 const entityCfg = { vaultRoot: graphVaultRoot, scopeGlobs: ['wiki/**/*.md'] }
+const derivCfg = { vaultRoot: graphVaultRoot, scopeGlobs: ['wiki/**/*.md', 'journal/**/*.md'] }
 
 describe('indexVault edge-building', () => {
   let db: PGlite
@@ -126,5 +127,74 @@ describe('indexVault edge-building', () => {
     const second = await indexVault(db, new FakeEmbedder(768), entityCfg, 2000)
     expect(second.filesSkipped).toBeGreaterThan(0) // chunks were skipped...
     expect(await listEdgesFrom(db, 'wiki/companies/JBR.md')).toHaveLength(3) // ...but edges rebuilt anyway
+  })
+})
+
+describe('indexVault derivation pass', () => {
+  let db: PGlite
+  beforeEach(async () => { db = await openDb(''); await initSchema(db, 768) })
+
+  it('derives a source=derived references edge from a prose wikilink to an entity', async () => {
+    await indexVault(db, new FakeEmbedder(768), derivCfg, 2000)
+    const edges = await listEdgesFrom(db, 'journal/2026-06-19.md')
+    const jbr = edges.find((e) => e.to_raw === '[[JBR]]')!
+    expect(jbr.source).toBe('derived')
+    expect(jbr.role).toBe('references')
+    expect(jbr.resolved).toBe(true)
+    expect(jbr.to_path).toBe('wiki/companies/JBR.md')
+  })
+
+  it('de-dupes a wikilink mentioned twice to a single edge', async () => {
+    await indexVault(db, new FakeEmbedder(768), derivCfg, 2000)
+    const jbrEdges = (await listEdgesFrom(db, 'journal/2026-06-19.md')).filter((e) => e.to_raw === '[[JBR]]')
+    expect(jbrEdges).toHaveLength(1)
+  })
+
+  it('skips a prose wikilink that does NOT resolve to an entity', async () => {
+    await indexVault(db, new FakeEmbedder(768), derivCfg, 2000)
+    const edges = await listEdgesFrom(db, 'journal/2026-06-19.md')
+    expect(edges.some((e) => e.to_raw === '[[Some Concept]]')).toBe(false)
+  })
+
+  it('slice-1 derivation emits only role=references edges (criterion #6: mentions reserved)', async () => {
+    await indexVault(db, new FakeEmbedder(768), derivCfg, 2000)
+    // All derived edges must have role='references'. Any other role (mentions, etc.) is reserved for
+    // later slices. Human affiliation edges (source='human') may have other roles and are not checked here.
+    const res = await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM edges WHERE source = 'derived' AND role != 'references'`)
+    expect(res.rows[0].n).toBe(0)
+  })
+
+  it('does NOT derive edges from entity files (those use the affiliations edge pass)', async () => {
+    await indexVault(db, new FakeEmbedder(768), derivCfg, 2000)
+    // JBR company has only human affiliation edges, no source=derived edges
+    const jbr = await listEdgesFrom(db, 'wiki/companies/JBR.md')
+    expect(jbr.every((e) => e.source !== 'derived')).toBe(true)
+  })
+
+  it('created_at is preserved across re-derivation (first-seen invariant)', async () => {
+    await indexVault(db, new FakeEmbedder(768), derivCfg, 2000)
+    const first = await listEdgesFrom(db, 'journal/2026-06-19.md')
+    const jbr1 = first.find((e) => e.to_raw === '[[JBR]]')! as unknown as { created_at: Date | string }
+    await new Promise((r) => setTimeout(r, 5))
+    await indexVault(db, new FakeEmbedder(768), derivCfg, 2000)
+    const second = await listEdgesFrom(db, 'journal/2026-06-19.md')
+    const jbr2 = second.find((e) => e.to_raw === '[[JBR]]')! as unknown as { created_at: Date | string }
+    // Compare by time value, not .toBe(): PGlite returns a distinct Date instance per query.
+    expect(new Date(jbr2.created_at).getTime()).toBe(new Date(jbr1.created_at).getTime())
+  })
+
+  it('a suppressed (from_path, to_raw, references) is skipped and does not re-appear', async () => {
+    await insertSuppression(db, 'journal/2026-06-19.md', '[[JBR]]', 'references', 'test')
+    await indexVault(db, new FakeEmbedder(768), derivCfg, 2000)
+    const edges = await listEdgesFrom(db, 'journal/2026-06-19.md')
+    expect(edges.some((e) => e.to_raw === '[[JBR]]' && e.source === 'derived')).toBe(false)
+  })
+
+  it('does NOT derive from agent-owned underscore files (I-1 self-referential loop guard)', async () => {
+    // wiki/_log.md contains [[JBR]] verbatim but is a machine artifact, not human prose.
+    // Scanning it would derive wiki/_log.md -> JBR and pollute the graph it audits.
+    await indexVault(db, new FakeEmbedder(768), derivCfg, 2000)
+    const edges = await listEdgesFrom(db, 'wiki/_log.md')
+    expect(edges.some((e) => e.source === 'derived')).toBe(false)
   })
 })
