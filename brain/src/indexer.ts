@@ -9,7 +9,7 @@ import { chunkMarkdown, parseEntityFile, scanProseWikilinks, CHUNKER_VERSION } f
 import {
   upsertChunk, getFileHash, setFileHash, deleteFileChunks, deleteFileEdges,
   insertEdge, listIndexedPaths,
-  upsertDerivedEdge, deleteDerivedFileEdges, isSuppressed, deleteAllFileEdges, listEdgesFrom,
+  upsertDerivedEdge, isSuppressed, deleteAllFileEdges, listEdgesFrom,
 } from './db.js'
 
 function fileHash(s: string): string {
