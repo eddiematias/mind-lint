@@ -158,7 +158,7 @@ describe('MCP HTTP bearer auth', () => {
   })
 })
 
-import { insertEdge, upsertDerivedEdge, insertSuppression } from '../src/db.js'
+import { insertEdge, upsertDerivedEdge, insertSuppression, deleteSuppression } from '../src/db.js'
 
 describe('connections MCP tool', () => {
   let server: Server
@@ -298,5 +298,45 @@ describe('derived_edges MCP tool', () => {
     const json = JSON.parse(body.includes('data:') ? body.slice(body.indexOf('{'), body.lastIndexOf('}') + 1) : body)
     const payload = JSON.parse(json.result.content[0].text)
     expect(payload.rows).toEqual([]) // rows empty; suppressions still present
+  })
+})
+
+describe('suppress_edge MCP tool', () => {
+  let server: Server
+  let db: PGlite
+  let url: string
+
+  beforeAll(async () => {
+    db = await openDb(''); await initSchema(db, 768)
+    server = createMcpHttpServer(db, new FakeEmbedder(768), new NoopReranker())
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    const addr = server.address(); url = `http://127.0.0.1:${typeof addr === 'object' && addr ? addr.port : 0}/mcp`
+  })
+  afterAll(async () => { await new Promise<void>((resolve) => server.close(() => resolve())) })
+  const callTool = (name: string, args: Record<string, unknown>) =>
+    fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' }, body: JSON.stringify({ jsonrpc: '2.0', id: 9, method: 'tools/call', params: { name, arguments: args } }) })
+
+  it('lists the suppress_edge tool', async () => {
+    const res = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' }, body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list' }) })
+    // Same as the derived_edges tools/list test: do NOT substring-match compact JSON. Inspect the
+    // raw body, then parse it and assert the tool name is in the SDK's tools array (whitespace +
+    // SSE framing make a substring match brittle).
+    const body = await res.text()
+    const json = JSON.parse(body.includes('data:') ? body.slice(body.indexOf('{'), body.lastIndexOf('}') + 1) : body)
+    const names = (json.result?.tools ?? []).map((t: { name: string }) => t.name)
+    expect(names).toContain('suppress_edge')
+  })
+
+  it('add inserts a suppression; derived_edges reflects it', async () => {
+    await callTool('suppress_edge', { from_path: 'journal/a.md', to_raw: '[[JBR]]', reason: 'wrong' })
+    const text = await (await callTool('derived_edges', {})).text()
+    expect(text).toContain('journal/a.md')
+    expect(text).toContain('wrong')
+  })
+
+  it('remove deletes the suppression', async () => {
+    await callTool('suppress_edge', { from_path: 'journal/a.md', to_raw: '[[JBR]]', action: 'remove' })
+    const text = await (await callTool('derived_edges', {})).text()
+    expect(text).not.toContain('journal/a.md')
   })
 })
