@@ -54,6 +54,14 @@ export async function initSchema(db: PGlite, dims: number): Promise<void> {
     );
     CREATE INDEX IF NOT EXISTS edges_from_idx ON edges (from_path);
     CREATE INDEX IF NOT EXISTS edges_to_idx   ON edges (to_path);
+    CREATE TABLE IF NOT EXISTS derived_suppressions (
+      from_path  TEXT NOT NULL,
+      to_raw     TEXT NOT NULL,
+      role       TEXT NOT NULL DEFAULT 'references',
+      reason     TEXT NOT NULL DEFAULT '',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (from_path, to_raw, role)
+    );
   `)
 }
 
