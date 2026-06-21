@@ -11,7 +11,7 @@ const DEFAULTS = {
   ],
   embedder: { type: 'ollama' as const, model: 'nomic-embed-text', endpoint: 'http://localhost:11434', dimensions: 768 },
   reranker: { enabled: true, model: 'Xenova/bge-reranker-base' },
-  server: { host: '127.0.0.1', port: 8765 },
+  server: { host: '127.0.0.1', port: 8765, reindexIntervalMs: 600_000 },
 }
 
 export function loadConfig(raw: Partial<BrainConfig>, vaultRoot: string): BrainConfig {
