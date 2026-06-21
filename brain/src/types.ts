@@ -7,7 +7,10 @@ export interface BrainConfig {
   // authToken: when set, createMcpHttpServer requires `Authorization: Bearer <token>`.
   // Optional so the default open/loopback mode (the public-repo cloner default) is unchanged.
   // Never committed: it comes from the gitignored brain.config.json or the BRAIN_AUTH_TOKEN env var.
-  server: { host: string; port: number; authToken?: string }
+  // reindexIntervalMs: how often the serve process reindexes IN-PROCESS (it is the sole
+  // owner of the single-writer DB, so no separate reindex process can conflict). Default
+  // 600000 (10 min). 0 disables the loop (dev, or when an external reindex is used).
+  server: { host: string; port: number; authToken?: string; reindexIntervalMs?: number }
 }
 
 export interface Chunk {
