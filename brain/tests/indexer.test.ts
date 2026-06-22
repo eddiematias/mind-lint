@@ -3,7 +3,8 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { resolve } from 'node:path'
 import { openDb, initSchema } from '../src/db.js'
 import { FakeEmbedder } from '../src/embedder.js'
-import { indexVault } from '../src/indexer.js'
+import { indexVault, buildEntityGazetteer } from '../src/indexer.js'
+import { scanMentions } from '../src/chunker.js'
 import type { PGlite } from '@electric-sql/pglite'
 
 const vaultRoot = resolve(__dirname, 'fixtures/vault')
@@ -196,5 +197,48 @@ describe('indexVault derivation pass', () => {
     await indexVault(db, new FakeEmbedder(768), derivCfg, 2000)
     const edges = await listEdgesFrom(db, 'wiki/_log.md')
     expect(edges.some((e) => e.source === 'derived')).toBe(false)
+  })
+})
+
+// graphVaultRoot is defined above at line 78; do NOT redeclare it here.
+// PR-6/PR-7: use TOKEN_RE from chunker (exported) and graphVaultRoot from above.
+
+describe('buildEntityGazetteer', () => {
+  it('includes the JBR title (all-caps acronym exempt from min-char) resolving to companies', async () => {
+    const gaz = await buildEntityGazetteer(graphVaultRoot, [
+      'wiki/companies/JBR.md', 'wiki/projects/JBR.md',
+    ])
+    const hits = scanMentions('Met with JBR.', gaz)
+    expect(hits.length).toBe(1)
+    expect(hits[0].targetPath).toBe('wiki/companies/JBR.md') // people>companies>projects tiebreak
+    expect(hits[0].canonicalRaw).toBe('[[JBR]]')
+  })
+
+  it('derives a person first-name from the name: field (Nadia)', async () => {
+    const gaz = await buildEntityGazetteer(graphVaultRoot, ['wiki/people/Nadia Okafor.md'])
+    const hits = scanMentions('Saw Nadia yesterday.', gaz)
+    expect(hits.length).toBe(1)
+    expect(hits[0].canonicalRaw).toBe('[[Nadia Okafor]]') // canonical = basename, not the first name
+  })
+
+  it('falls back to basename first-name when no name: field (Jeff)', async () => {
+    const gaz = await buildEntityGazetteer(graphVaultRoot, ['wiki/people/Jeff Perera.md'])
+    const hits = scanMentions('Jeff called.', gaz)
+    expect(hits.map((h) => h.canonicalRaw)).toEqual(['[[Jeff Perera]]'])
+  })
+
+  it('excludes an ambiguous first-name shared by two people (+ no hit)', async () => {
+    // Two people whose first token is "Downstream" -> excluded as ambiguous.
+    const gaz = await buildEntityGazetteer(graphVaultRoot, [
+      'wiki/people/Downstream Leaf.md', 'wiki/people/Downstream Twin.md',
+    ])
+    expect(scanMentions('Downstream is here.', gaz).length).toBe(0)
+  })
+
+  it('M2: a person first-name equal to a single-word title resolves to the TITLE (title wins)', async () => {
+    const gaz = await buildEntityGazetteer(graphVaultRoot, ['wiki/projects/Solo.md', 'wiki/people/Solo Maker.md'])
+    const hits = scanMentions('Solo shipped today.', gaz)
+    expect(hits.length).toBe(1)
+    expect(hits[0].targetPath).toBe('wiki/projects/Solo.md')
   })
 })

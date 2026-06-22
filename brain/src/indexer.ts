@@ -5,7 +5,8 @@ import { createHash } from 'node:crypto'
 import matter from 'gray-matter'
 import type { PGlite } from '@electric-sql/pglite'
 import type { Embedder } from './types.js'
-import { chunkMarkdown, parseEntityFile, scanProseWikilinks, CHUNKER_VERSION } from './chunker.js'
+import { chunkMarkdown, parseEntityFile, scanProseWikilinks, scanMentions, buildGazetteer, TOKEN_RE, CHUNKER_VERSION } from './chunker.js'
+import type { Gazetteer } from './chunker.js'
 import {
   upsertChunk, getFileHash, setFileHash, deleteFileChunks, deleteFileEdges,
   insertEdge, listIndexedPaths,
@@ -64,6 +65,58 @@ function buildResolver(entityPaths: string[]): Map<string, string> {
     }
   }
   return byBase
+}
+
+const MENTION_MIN_TOKEN_CHARS = 4
+// Genuinely ambiguous single tokens to keep out of the gazetteer even if they are a
+// title or first-name. Seeded empty; extend (exact case) only when real noise appears.
+const MENTION_IGNORE_TOKENS = new Set<string>([])
+
+// PR-7: reuse TOKEN_RE exported from chunker.ts (no local duplicate).
+function firstToken(s: string): string { return (s.match(TOKEN_RE) ?? [''])[0] }
+function singleTokenQualifies(surface: string): boolean {
+  const tokens = surface.match(TOKEN_RE) ?? []
+  if (tokens.length !== 1) return true // multi-token surfaces are specific enough
+  const t = tokens[0]
+  if (MENTION_IGNORE_TOKENS.has(t)) return false
+  if (/^[A-Z]{2,}$/.test(t)) return true // all-caps acronym exemption (JBR)
+  return t.length >= MENTION_MIN_TOKEN_CHARS
+}
+
+// Build the mention gazetteer from entity files: titles (resolver-deduped) + person
+// first-names. Reads name/type via matter() directly (parseEntityFile does not expose
+// name, I1). Deterministic: entityPaths are sorted before iteration (M1).
+export async function buildEntityGazetteer(vaultRoot: string, entityPaths: string[]): Promise<Gazetteer> {
+  const sorted = [...entityPaths].sort()
+  const resolver = buildResolver(sorted) // base -> winning entity path (people>companies>projects)
+
+  const entries: { surface: string; targetPath: string; canonicalRaw: string }[] = []
+  // 1) Title entries: one per resolved basename (collisions already resolved).
+  for (const [base, path] of resolver) {
+    if (!singleTokenQualifies(base)) continue
+    entries.push({ surface: base, targetPath: path, canonicalRaw: `[[${base}]]` })
+  }
+  // 2) Person first-name entries (read frontmatter for type + name).
+  const firstNameCount = new Map<string, number>()
+  const firstNameInfo: { fn: string; path: string; base: string }[] = []
+  for (const rel of sorted) {
+    let data: Record<string, unknown> = {}
+    try { data = matter(await readFile(resolve(vaultRoot, rel), 'utf8')).data as Record<string, unknown> } catch { data = {} }
+    if (String(data.type ?? '') !== 'person') continue
+    const base = basename(rel, '.md')
+    const nameField = data.name == null ? base : String(data.name)
+    const fn = firstToken(nameField)
+    if (!fn) continue
+    firstNameCount.set(fn, (firstNameCount.get(fn) ?? 0) + 1)
+    firstNameInfo.push({ fn, path: rel, base })
+  }
+  for (const info of firstNameInfo) {
+    if ((firstNameCount.get(info.fn) ?? 0) > 1) continue // ambiguous across people (M2): exclude
+    if (resolver.has(info.fn)) continue // first-name equals a title basename: title already covers it (M2)
+    if (!singleTokenQualifies(info.fn)) continue
+    entries.push({ surface: info.fn, targetPath: info.path, canonicalRaw: `[[${info.base}]]` })
+  }
+  return buildGazetteer(entries)
 }
 
 // "[[Name]]" → bare "Name"
