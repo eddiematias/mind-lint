@@ -242,11 +242,12 @@ export function buildGazetteer(entries: { surface: string; targetPath: string; c
   const gaz: Gazetteer = new Map()
   for (const e of entries) {
     const tokens = e.surface.match(TOKEN_RE) ?? []
-    if (tokens.length === 0) continue
+    const first = tokens[0]
+    if (first === undefined) continue
     const entry: GazetteerEntry = { tokens, surface: e.surface, targetPath: e.targetPath, canonicalRaw: e.canonicalRaw }
-    const bucket = gaz.get(tokens[0]) ?? []
+    const bucket = gaz.get(first) ?? []
     bucket.push(entry)
-    gaz.set(tokens[0], bucket)
+    gaz.set(first, bucket)
   }
   for (const bucket of gaz.values()) {
     bucket.sort((a, b) => b.tokens.length - a.tokens.length || (a.surface < b.surface ? -1 : a.surface > b.surface ? 1 : 0))
