@@ -6,8 +6,9 @@ The user wants the complete set of graph connections for an entity. Steps:
 
 ## Arguments
 
-- `entity` (required): a `[[Name]]`, a bare name, or an entity path. The rest of `$ARGUMENTS`
-  after the entity name is checked for flags below.
+- `entity` (required): a `[[Name]]`, a bare name, or an entity path. Treat any token starting
+  with `--` as a flag; everything before the first `--` token is the entity name (which may be
+  multiple words). The rest of `$ARGUMENTS` after the entity name is checked for flags below.
 - `--includeMentions` (optional flag): opt in to the lower-trust mention layer (see step 5).
   Default: omitted (mention layer hidden).
 
@@ -40,7 +41,7 @@ The user wants the complete set of graph connections for an entity. Steps:
 4. List any unresolved targets (`resolved: false` on a ROW, `to` is null) separately as
    "+ N unprofiled targets: [[Name]], ..." (these name who/what deserves a profile). (Note: a row's
    `resolved` field is per-edge-target; the top-level `resolved` field is whether the SEED entity
-   itself was found — don't confuse the two.)
+   itself was found; don't confuse the two.)
 5. **Mention layer (opt-in only, `--includeMentions`):** when `--includeMentions` was passed,
    `rows` will also include `source: "derived", role: "mentions"` entries. These are bare-prose
    mentions: the entity name appeared in plain text without a wikilink. They are lower-trust than
