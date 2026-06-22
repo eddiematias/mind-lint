@@ -220,5 +220,34 @@ export async function indexVault(db: PGlite, embedder: Embedder, cfg: IndexCfg, 
     }
   }
 
+  // Mentions pass (slice 2): bare-prose gazetteer mentions -> source=derived, role=mentions.
+  // Unconditional like the references pass. Reconcile via upsert (preserve created_at) +
+  // vanished cleanup. Quarantined from connections by default (see traverseEdges).
+  const gazetteer = await buildEntityGazetteer(cfg.vaultRoot, entityPaths)
+  for (const rel of matches) {
+    if (!isDerivationSource(rel)) continue
+    const raw = await readFile(resolve(cfg.vaultRoot, rel), 'utf8')
+    let content = raw
+    try { content = matter(raw).content } catch { content = raw }
+    const hits = scanMentions(content, gazetteer)
+    const survivors = new Set<string>()
+    for (const h of hits) {
+      if (await isSuppressed(db, rel, h.canonicalRaw, 'mentions')) continue
+      survivors.add(h.canonicalRaw)
+      await upsertDerivedEdge(db, {
+        fromPath: rel, toPath: h.targetPath, toRaw: h.canonicalRaw, role: 'mentions',
+        category: null, source: 'derived', context: h.context, resolved: true,
+      })
+    }
+    for (const e of await listEdgesFrom(db, rel)) {
+      if (e.source === 'derived' && e.role === 'mentions' && !survivors.has(e.to_raw)) {
+        await db.query(
+          `DELETE FROM edges WHERE from_path = $1 AND to_raw = $2 AND role = 'mentions' AND source = 'derived'`,
+          [rel, e.to_raw],
+        )
+      }
+    }
+  }
+
   return { filesIndexed, filesSkipped, filesRemoved, chunksWritten }
 }

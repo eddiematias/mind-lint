@@ -157,11 +157,13 @@ describe('indexVault derivation pass', () => {
     expect(edges.some((e) => e.to_raw === '[[Some Concept]]')).toBe(false)
   })
 
-  it('slice-1 derivation emits only role=references edges (criterion #6: mentions reserved)', async () => {
+  it('wikilinked names do NOT produce mention edges; only bare prose does (C3 at integration scope)', async () => {
     await indexVault(db, new FakeEmbedder(768), derivCfg, 2000)
-    // All derived edges must have role='references'. Any other role (mentions, etc.) is reserved for
-    // later slices. Human affiliation edges (source='human') may have other roles and are not checked here.
-    const res = await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM edges WHERE source = 'derived' AND role != 'references'`)
+    // Under wiki+journal scope every entity name is wikilinked (no bare prose), so the mentions
+    // pass yields ZERO mention edges. Positive mention coverage lives in derivation-integration.test.ts
+    // where content/ bare prose is in scope. Non-vacuous: a scanner that matched wikilinked names
+    // would make this > 0.
+    const res = await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM edges WHERE source='derived' AND role='mentions'`)
     expect(res.rows[0].n).toBe(0)
   })
 

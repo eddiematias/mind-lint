@@ -61,6 +61,38 @@ describe('derivation integration', () => {
     expect(await listDerivedEdges(db, watermark, 500)).toEqual([])
   })
 
+  it('derives role:mentions from BARE prose only, not wikilinked names; both edges coexist (C3, decision 5)', async () => {
+    await indexVault(db, new FakeEmbedder(768), cfg, 2000)
+    const edges = await listEdgesFrom(db, 'content/mentions-note.md')
+    // bare "JBR" -> mention edge AND [[JBR]] -> references edge, same target, no collision (role differs)
+    expect(edges.some((e) => e.to_raw === '[[JBR]]' && e.role === 'mentions' && e.source === 'derived')).toBe(true)
+    expect(edges.some((e) => e.to_raw === '[[JBR]]' && e.role === 'references' && e.source === 'derived')).toBe(true)
+    // [[Otus Coffee]] is ONLY wikilinked -> never a mention
+    expect(edges.some((e) => e.to_path === 'wiki/companies/Otus Coffee.md' && e.role === 'mentions')).toBe(false)
+  })
+
+  it('mention created_at is preserved across re-derivation (first-seen)', async () => {
+    await indexVault(db, new FakeEmbedder(768), cfg, 2000)
+    const first = await listEdgesFrom(db, 'content/mentions-note.md')
+    const m1 = first.find((e) => e.to_raw === '[[JBR]]' && e.role === 'mentions')! as unknown as { created_at: Date | string }
+    await new Promise((r) => setTimeout(r, 5))           // PR-3: non-vacuous guard (mirrors slice-1 test)
+    await indexVault(db, new FakeEmbedder(768), cfg, 2000) // no force: the derivation pass is unconditional
+    const second = await listEdgesFrom(db, 'content/mentions-note.md')
+    const m2 = second.find((e) => e.to_raw === '[[JBR]]' && e.role === 'mentions')! as unknown as { created_at: Date | string }
+    expect(new Date(m2.created_at).getTime()).toBe(new Date(m1.created_at).getTime())
+  })
+
+  it('a suppressed mention is skipped but the references edge to the same target survives, and stays gone (criterion 5)', async () => {
+    await insertSuppression(db, 'content/mentions-note.md', '[[JBR]]', 'mentions', 'noise')
+    await indexVault(db, new FakeEmbedder(768), cfg, 2000)
+    let edges = await listEdgesFrom(db, 'content/mentions-note.md')
+    expect(edges.some((e) => e.to_raw === '[[JBR]]' && e.role === 'mentions')).toBe(false)   // mention skipped
+    expect(edges.some((e) => e.to_raw === '[[JBR]]' && e.role === 'references')).toBe(true)   // references untouched
+    await indexVault(db, new FakeEmbedder(768), cfg, 2000)
+    edges = await listEdgesFrom(db, 'content/mentions-note.md')
+    expect(edges.some((e) => e.to_raw === '[[JBR]]' && e.role === 'mentions')).toBe(false)    // stays gone
+  })
+
   it('renders the FULL pending set past a single page; watermark covers the OLDEST, not just the newest (C-1)', async () => {
     // Seed N=1100 derived edges with EXPLICIT, strictly-increasing created_at (1 second apart) so
     // seed-0000 is provably the oldest and all timestamps are distinct. Uses a direct SQL insert
