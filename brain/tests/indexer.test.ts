@@ -240,5 +240,14 @@ describe('buildEntityGazetteer', () => {
     const hits = scanMentions('Solo shipped today.', gaz)
     expect(hits.length).toBe(1)
     expect(hits[0].targetPath).toBe('wiki/projects/Solo.md')
+    // Guard detection: with the guard the bucket has 2 entries (project title "Solo" + person
+    // full-name title "Solo Maker", both keyed by first-token "Solo"). Without the guard a
+    // third entry -- the person first-name "Solo" pointing at Solo Maker -- is also inserted,
+    // making the bucket length 3. This assertion directly verifies that
+    // `if (resolver.has(info.fn)) continue` is doing its job.
+    const bucket = gaz.get('Solo')
+    expect(bucket?.length).toBe(2)                 // guard excluded the person first-name; without the guard this is 3
+    // The project title entry is present (bucket sorts longer-token entries first, so bucket[1] is the 1-token "Solo" entry).
+    expect(bucket?.find((e) => e.canonicalRaw === '[[Solo]]')?.targetPath).toBe('wiki/projects/Solo.md')
   })
 })
