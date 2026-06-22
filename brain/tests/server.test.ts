@@ -340,3 +340,65 @@ describe('suppress_edge MCP tool', () => {
     expect(text).not.toContain('journal/a.md')
   })
 })
+
+// Task 4 (PR-8): connections tool must hide derived mentions by default and reveal with includeMentions.
+describe('connections includeMentions quarantine (PR-8)', () => {
+  let server: Server
+  let db: PGlite
+  let url: string
+
+  beforeAll(async () => {
+    db = await openDb('')
+    await initSchema(db, 768)
+    // PR-8: register the seed in files so resolveSeed resolves it.
+    await db.query(`INSERT INTO files (path, file_hash) VALUES ('wiki/companies/JBR.md','h')`)
+    // Insert a derived mention edge (should be hidden by default).
+    await upsertDerivedEdge(db, {
+      fromPath: 'journal/x.md',
+      toPath: 'wiki/companies/JBR.md',
+      toRaw: '[[JBR]]',
+      role: 'mentions',
+      category: null,
+      source: 'derived',
+      context: 'JBR is hiring',
+      resolved: true,
+    })
+    server = createMcpHttpServer(db, new FakeEmbedder(768), new NoopReranker())
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    const addr = server.address()
+    const port = typeof addr === 'object' && addr ? addr.port : 0
+    url = `http://127.0.0.1:${port}/mcp`
+  })
+  afterAll(async () => { await new Promise<void>((resolve) => server.close(() => resolve())) })
+
+  interface ConnPayload {
+    entity: string
+    resolved: boolean
+    seed: string | null
+    rows: Array<{ from: string; to: string | null; to_raw: string; role: string; source: string; resolved: boolean }>
+  }
+  async function callPayload(args: Record<string, unknown>): Promise<ConnPayload> {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 9, method: 'tools/call', params: { name: 'connections', arguments: args } }),
+    })
+    const body = await res.text()
+    const dataLine = body.split('\n').find((l) => l.startsWith('data:'))
+    if (!dataLine) throw new Error(`no SSE data line: ${body}`)
+    const envelope = JSON.parse(dataLine.slice('data:'.length).trim())
+    return JSON.parse(envelope.result.content[0].text) as ConnPayload
+  }
+
+  it('default (no includeMentions): derived mention edges are hidden from connections', async () => {
+    const p = await callPayload({ entity: '[[JBR]]', direction: 'in', depth: 1 })
+    expect(p.resolved).toBe(true)
+    expect(p.rows.some((r) => r.source === 'derived' && r.role === 'mentions')).toBe(false)
+  })
+
+  it('includeMentions:true reveals the derived mention edge', async () => {
+    const p = await callPayload({ entity: '[[JBR]]', direction: 'in', depth: 1, includeMentions: true })
+    expect(p.resolved).toBe(true)
+    expect(p.rows.some((r) => r.source === 'derived' && r.role === 'mentions')).toBe(true)
+  })
+})

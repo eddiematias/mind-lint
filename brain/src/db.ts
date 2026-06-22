@@ -228,6 +228,7 @@ export interface TraverseOpts {
   role?: string
   source?: string
   category?: string
+  includeMentions?: boolean
 }
 export interface TraverseRow {
   from: string
@@ -247,6 +248,11 @@ export async function traverseEdges(db: PGlite, seed: string, opts: TraverseOpts
   // out:  e.from_path = frontier.node
   // in:   e.to_path   = frontier.node
   // both: either side matches; the "next node" is the OTHER endpoint.
+  // $7 (includeMentions): when false, exclude source='derived' AND role='mentions' edges in BOTH
+  // the recursive CTE JOIN (stops depth>1 hops via derived mentions, I3) and the final SELECT
+  // (hides them from the result set). Both-column predicate (I2): a human role:mentions affiliation
+  // (source='human') is never hidden.
+  const includeMentions = opts.includeMentions ?? false
   const res = await db.query<TraverseRow>(
     `
     WITH RECURSIVE walk AS (
@@ -263,6 +269,7 @@ export async function traverseEdges(db: PGlite, seed: string, opts: TraverseOpts
         ($2 = 'both' AND (e.from_path = w.node OR e.to_path = w.node))
       )
       WHERE w.hop < $3
+        AND ($7 OR NOT (e.source = 'derived' AND e.role = 'mentions'))
         AND (CASE WHEN e.from_path = w.node THEN e.to_path ELSE e.from_path END) IS NOT NULL
         AND NOT ((CASE WHEN e.from_path = w.node THEN e.to_path ELSE e.from_path END) = ANY (w.visited))
     )
@@ -274,11 +281,12 @@ export async function traverseEdges(db: PGlite, seed: string, opts: TraverseOpts
       ($2 = 'both' AND (e.from_path = w.node OR e.to_path = w.node))
     )
     WHERE w.hop < $3
+      AND ($7 OR NOT (e.source = 'derived' AND e.role = 'mentions'))
       AND ($4::text IS NULL OR e.role = $4)
       AND ($5::text IS NULL OR e.source = $5)
       AND ($6::text IS NULL OR e.category = $6)
     `,
-    [seed, direction, depth, opts.role ?? null, opts.source ?? null, opts.category ?? null],
+    [seed, direction, depth, opts.role ?? null, opts.source ?? null, opts.category ?? null, includeMentions],
   )
   return res.rows
 }

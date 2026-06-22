@@ -61,15 +61,16 @@ export function buildServer(db: PGlite, embedder: Embedder, reranker: Reranker):
       role: z.string().optional(),
       source: z.string().optional(),
       category: z.string().optional(),
+      includeMentions: z.boolean().optional(),
     },
-    async ({ entity, direction, depth, role, source, category }) => {
+    async ({ entity, direction, depth, role, source, category, includeMentions }) => {
       const seed = await resolveSeed(db, entity)
       if (!seed) {
         // Unresolved: no such entity file. Distinct from a resolved-but-edgeless entity.
         return { content: [{ type: 'text', text: JSON.stringify({ entity, resolved: false, seed: null, rows: [] }) }] }
       }
       // Resolved: real entity. `rows` may legitimately be empty (edgeless entity, e.g. Amara).
-      const rows = await traverseEdges(db, seed, { direction, depth, role, source, category })
+      const rows = await traverseEdges(db, seed, { direction, depth, role, source, category, includeMentions })
       return { content: [{ type: 'text', text: JSON.stringify({ entity, resolved: true, seed, rows }) }] }
     },
   )
