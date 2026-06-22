@@ -226,3 +226,69 @@ export function scanProseWikilinks(content: string): ProseWikilink[] {
   }
   return [...byRaw.entries()].map(([raw, context]) => ({ raw, context }))
 }
+
+// --- Mention gazetteer (slice 2). NET-NEW: tokenizer + maximal-munch matcher. ---
+// A "mention" is a BARE entity name in prose (no wikilink). Wikilinked names are
+// already references edges, so [[...]] spans are stripped before matching (C3).
+export interface MentionHit { targetPath: string; canonicalRaw: string; context: string }
+export interface GazetteerEntry { tokens: string[]; surface: string; targetPath: string; canonicalRaw: string }
+export type Gazetteer = Map<string, GazetteerEntry[]>
+
+export const TOKEN_RE = /[a-zA-Z0-9]+/g // exported (PR-7) so indexer reuses it; not a guard regex (C2 unaffected)
+
+// Group entries by first token (exact case); within a bucket, longest token-count
+// first, then surface ascending, so maximal-munch is deterministic (M1).
+export function buildGazetteer(entries: { surface: string; targetPath: string; canonicalRaw: string }[]): Gazetteer {
+  const gaz: Gazetteer = new Map()
+  for (const e of entries) {
+    const tokens = e.surface.match(TOKEN_RE) ?? []
+    if (tokens.length === 0) continue
+    const entry: GazetteerEntry = { tokens, surface: e.surface, targetPath: e.targetPath, canonicalRaw: e.canonicalRaw }
+    const bucket = gaz.get(tokens[0]) ?? []
+    bucket.push(entry)
+    gaz.set(tokens[0], bucket)
+  }
+  for (const bucket of gaz.values()) {
+    bucket.sort((a, b) => b.tokens.length - a.tokens.length || (a.surface < b.surface ? -1 : a.surface > b.surface ? 1 : 0))
+  }
+  return gaz
+}
+
+// Scan bare prose for gazetteer hits. Fence-guarded; per line strip inline-code AND
+// [[...]] spans before tokenizing (the visible context keeps the original line).
+// Case-sensitive, word-boundary (token) matching, maximal-munch. First mention per
+// target wins (document order); one hit per target.
+export function scanMentions(content: string, gaz: Gazetteer): MentionHit[] {
+  const byTarget = new Map<string, MentionHit>()
+  let inFence = false
+  for (const line of content.split('\n')) {
+    if (PROSE_FENCE(line)) { inFence = !inFence; continue }
+    if (inFence) continue
+    const scanTarget = line.replace(INLINE_CODE_RE, '').replace(WIKILINK_RE, '')
+    const tokens = scanTarget.match(TOKEN_RE) ?? []
+    let i = 0
+    while (i < tokens.length) {
+      const candidates = gaz.get(tokens[i])
+      let matched: GazetteerEntry | null = null
+      if (candidates) {
+        for (const c of candidates) {
+          if (i + c.tokens.length > tokens.length) continue
+          let ok = true
+          for (let k = 0; k < c.tokens.length; k++) {
+            if (tokens[i + k] !== c.tokens[k]) { ok = false; break }
+          }
+          if (ok) { matched = c; break }
+        }
+      }
+      if (matched) {
+        if (!byTarget.has(matched.targetPath)) {
+          byTarget.set(matched.targetPath, { targetPath: matched.targetPath, canonicalRaw: matched.canonicalRaw, context: line.trim().slice(0, 240) })
+        }
+        i += matched.tokens.length
+      } else {
+        i += 1
+      }
+    }
+  }
+  return [...byTarget.values()]
+}

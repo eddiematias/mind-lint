@@ -224,3 +224,56 @@ describe('scanProseWikilinks', () => {
     expect(scanProseWikilinks('plain prose, no links')).toEqual([])
   })
 })
+
+import { buildGazetteer, scanMentions } from '../src/chunker.js'
+
+// Helper: a gazetteer over a few entities the way the indexer will build it.
+function gaz() {
+  return buildGazetteer([
+    { surface: 'JBR', targetPath: 'wiki/companies/JBR.md', canonicalRaw: '[[JBR]]' },
+    { surface: 'Phase Rentals', targetPath: 'wiki/companies/Phase Rentals.md', canonicalRaw: '[[Phase Rentals]]' },
+    { surface: 'Amara', targetPath: 'wiki/people/Amara Markovic.md', canonicalRaw: '[[Amara Markovic]]' },
+  ])
+}
+
+describe('scanMentions', () => {
+  it('matches a bare multi-token name but NOT a partial token', () => {
+    const hits = scanMentions('We met about Phase Rentals today.\nThat was phase 1 of the rollout.', gaz())
+    expect(hits.map((h) => h.canonicalRaw)).toEqual(['[[Phase Rentals]]'])
+  })
+
+  it('is case-sensitive (JBR matches, jbr does not)', () => {
+    expect(scanMentions('Talked to JBR.', gaz()).length).toBe(1)
+    expect(scanMentions('talked to jbr.', gaz()).length).toBe(0)
+  })
+
+  it('does NOT match a name inside [[wikilink]] syntax (C3) but DOES match a separate bare mention', () => {
+    // wikilinked only -> no mention
+    expect(scanMentions('See [[JBR]] for details.', gaz()).length).toBe(0)
+    // wikilink AND a separate bare mention on another line -> one mention
+    const hits = scanMentions('See [[JBR]] for details.\nJBR is hiring.', gaz())
+    expect(hits.map((h) => h.canonicalRaw)).toEqual(['[[JBR]]'])
+  })
+
+  it('skips fenced code blocks and inline code spans', () => {
+    const fenced = 'Before.\n```\nJBR inside a fence\n```\nAfter.'
+    expect(scanMentions(fenced, gaz()).length).toBe(0)
+    expect(scanMentions('The `JBR` token is code.', gaz()).length).toBe(0)
+  })
+
+  it('dedupes per target, keeping the first matching line as context', () => {
+    const hits = scanMentions('Amara called.\nLater, Amara texted.', gaz())
+    expect(hits.length).toBe(1)
+    expect(hits[0].targetPath).toBe('wiki/people/Amara Markovic.md')
+    expect(hits[0].context).toBe('Amara called.')
+  })
+
+  it('maximal-munch: longest entry wins at an offset', () => {
+    const g = buildGazetteer([
+      { surface: 'Phase', targetPath: 'wiki/people/Phase Person.md', canonicalRaw: '[[Phase Person]]' },
+      { surface: 'Phase Rentals', targetPath: 'wiki/companies/Phase Rentals.md', canonicalRaw: '[[Phase Rentals]]' },
+    ])
+    const hits = scanMentions('Phase Rentals grew.', g)
+    expect(hits.map((h) => h.canonicalRaw)).toEqual(['[[Phase Rentals]]'])
+  })
+})
