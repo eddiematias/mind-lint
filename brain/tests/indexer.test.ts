@@ -3,7 +3,8 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { resolve } from 'node:path'
 import { openDb, initSchema } from '../src/db.js'
 import { FakeEmbedder } from '../src/embedder.js'
-import { indexVault } from '../src/indexer.js'
+import { indexVault, buildEntityGazetteer } from '../src/indexer.js'
+import { scanMentions } from '../src/chunker.js'
 import type { PGlite } from '@electric-sql/pglite'
 
 const vaultRoot = resolve(__dirname, 'fixtures/vault')
@@ -156,11 +157,13 @@ describe('indexVault derivation pass', () => {
     expect(edges.some((e) => e.to_raw === '[[Some Concept]]')).toBe(false)
   })
 
-  it('slice-1 derivation emits only role=references edges (criterion #6: mentions reserved)', async () => {
+  it('wikilinked names do NOT produce mention edges; only bare prose does (C3 at integration scope)', async () => {
     await indexVault(db, new FakeEmbedder(768), derivCfg, 2000)
-    // All derived edges must have role='references'. Any other role (mentions, etc.) is reserved for
-    // later slices. Human affiliation edges (source='human') may have other roles and are not checked here.
-    const res = await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM edges WHERE source = 'derived' AND role != 'references'`)
+    // Under wiki+journal scope every entity name is wikilinked (no bare prose), so the mentions
+    // pass yields ZERO mention edges. Positive mention coverage lives in derivation-integration.test.ts
+    // where content/ bare prose is in scope. Non-vacuous: a scanner that matched wikilinked names
+    // would make this > 0.
+    const res = await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM edges WHERE source='derived' AND role='mentions'`)
     expect(res.rows[0].n).toBe(0)
   })
 
@@ -196,5 +199,57 @@ describe('indexVault derivation pass', () => {
     await indexVault(db, new FakeEmbedder(768), derivCfg, 2000)
     const edges = await listEdgesFrom(db, 'wiki/_log.md')
     expect(edges.some((e) => e.source === 'derived')).toBe(false)
+  })
+})
+
+// graphVaultRoot is defined above at line 78; do NOT redeclare it here.
+// PR-6/PR-7: use TOKEN_RE from chunker (exported) and graphVaultRoot from above.
+
+describe('buildEntityGazetteer', () => {
+  it('includes the JBR title (all-caps acronym exempt from min-char) resolving to companies', async () => {
+    const gaz = await buildEntityGazetteer(graphVaultRoot, [
+      'wiki/companies/JBR.md', 'wiki/projects/JBR.md',
+    ])
+    const hits = scanMentions('Met with JBR.', gaz)
+    expect(hits.length).toBe(1)
+    expect(hits[0].targetPath).toBe('wiki/companies/JBR.md') // people>companies>projects tiebreak
+    expect(hits[0].canonicalRaw).toBe('[[JBR]]')
+  })
+
+  it('derives a person first-name from the name: field (Nadia)', async () => {
+    const gaz = await buildEntityGazetteer(graphVaultRoot, ['wiki/people/Nadia Okafor.md'])
+    const hits = scanMentions('Saw Nadia yesterday.', gaz)
+    expect(hits.length).toBe(1)
+    expect(hits[0].canonicalRaw).toBe('[[Nadia Okafor]]') // canonical = basename, not the first name
+  })
+
+  it('falls back to basename first-name when no name: field (Jeff)', async () => {
+    const gaz = await buildEntityGazetteer(graphVaultRoot, ['wiki/people/Jeff Perera.md'])
+    const hits = scanMentions('Jeff called.', gaz)
+    expect(hits.map((h) => h.canonicalRaw)).toEqual(['[[Jeff Perera]]'])
+  })
+
+  it('excludes an ambiguous first-name shared by two people (+ no hit)', async () => {
+    // Two people whose first token is "Downstream" -> excluded as ambiguous.
+    const gaz = await buildEntityGazetteer(graphVaultRoot, [
+      'wiki/people/Downstream Leaf.md', 'wiki/people/Downstream Twin.md',
+    ])
+    expect(scanMentions('Downstream is here.', gaz).length).toBe(0)
+  })
+
+  it('M2: a person first-name equal to a single-word title resolves to the TITLE (title wins)', async () => {
+    const gaz = await buildEntityGazetteer(graphVaultRoot, ['wiki/projects/Solo.md', 'wiki/people/Solo Maker.md'])
+    const hits = scanMentions('Solo shipped today.', gaz)
+    expect(hits.length).toBe(1)
+    expect(hits[0].targetPath).toBe('wiki/projects/Solo.md')
+    // Guard detection: with the guard the bucket has 2 entries (project title "Solo" + person
+    // full-name title "Solo Maker", both keyed by first-token "Solo"). Without the guard a
+    // third entry -- the person first-name "Solo" pointing at Solo Maker -- is also inserted,
+    // making the bucket length 3. This assertion directly verifies that
+    // `if (resolver.has(info.fn)) continue` is doing its job.
+    const bucket = gaz.get('Solo')
+    expect(bucket?.length).toBe(2)                 // guard excluded the person first-name; without the guard this is 3
+    // The project title entry is present (bucket sorts longer-token entries first, so bucket[1] is the 1-token "Solo" entry).
+    expect(bucket?.find((e) => e.canonicalRaw === '[[Solo]]')?.targetPath).toBe('wiki/projects/Solo.md')
   })
 })

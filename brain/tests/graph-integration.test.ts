@@ -41,3 +41,36 @@ describe('graph integration', () => {
     expect(await listEdgesFrom(db, 'wiki/companies/Otus Coffee.md')).toEqual([])
   })
 })
+
+// Task 4: quarantine derived mentions from traverseEdges (I2, I3).
+// These tests create their own db + schema; they do NOT call indexVault so the
+// beforeEach fixture data does not interfere with the raw edge inserts below.
+describe('traverseEdges mention quarantine', () => {
+  it('derived mentions hidden by default, shown with includeMentions, human mentions never hidden', async () => {
+    const db = await openDb('')
+    await initSchema(db, 768)
+    // seed: a derived mention edge and a human role:mentions affiliation to a similar target
+    await db.query(`INSERT INTO edges (from_path,to_path,to_raw,role,source,context,resolved) VALUES
+      ('journal/x.md','wiki/companies/JBR.md','[[JBR]]','mentions','derived','JBR is hiring',true),
+      ('wiki/companies/JBR.md','wiki/people/Nobody.md','[[Nobody]]','mentions','human','',false)`)
+
+    const def = await traverseEdges(db, 'wiki/companies/JBR.md', { direction: 'both', depth: 1 })
+    // derived mention hidden by default; human mention kept
+    expect(def.some((r) => r.source === 'derived' && r.role === 'mentions')).toBe(false)
+    expect(def.some((r) => r.source === 'human' && r.role === 'mentions')).toBe(true)
+
+    const inc = await traverseEdges(db, 'wiki/companies/JBR.md', { direction: 'both', depth: 1, includeMentions: true })
+    expect(inc.some((r) => r.source === 'derived' && r.role === 'mentions')).toBe(true)
+  })
+
+  it('quarantine blocks derived mentions from forming depth-2 hops (I3)', async () => {
+    const db = await openDb('')
+    await initSchema(db, 768)
+    // A --(derived mention)--> B --(human references)--> C. With mentions hidden, C must be unreachable from A.
+    await db.query(`INSERT INTO edges (from_path,to_path,to_raw,role,source,context,resolved) VALUES
+      ('A.md','B.md','[[B]]','mentions','derived','',true),
+      ('B.md','C.md','[[C]]','references','human','',true)`)
+    const rows = await traverseEdges(db, 'A.md', { direction: 'out', depth: 2 })
+    expect(rows.some((r) => r.to === 'C.md')).toBe(false)
+  })
+})
