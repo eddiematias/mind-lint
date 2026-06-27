@@ -202,6 +202,23 @@ describe('indexVault derivation pass', () => {
   })
 })
 
+import { buildResolver, rawToBase, isDerivationSource } from '../src/indexer.js'
+
+describe('exported resolver helpers (slice 3)', () => {
+  it('buildResolver maps basename to entity path with people>companies>projects precedence', () => {
+    const r = buildResolver(['wiki/companies/JBR.md', 'wiki/people/Amara Markovic.md'])
+    expect(r.get('JBR')).toBe('wiki/companies/JBR.md')
+    expect(r.get('Amara Markovic')).toBe('wiki/people/Amara Markovic.md')
+  })
+  it('rawToBase strips wikilink brackets', () => {
+    expect(rawToBase('[[Amara Markovic]]')).toBe('Amara Markovic')
+  })
+  it('isDerivationSource excludes memory/facts/ (slice 3: facts must not mint graph edges)', () => {
+    expect(isDerivationSource('memory/facts/amara-markovic.md')).toBe(false)
+    expect(isDerivationSource('memory/learnings/backend.md')).toBe(true)
+  })
+})
+
 // graphVaultRoot is defined above at line 78; do NOT redeclare it here.
 // PR-6/PR-7: use TOKEN_RE from chunker (exported) and graphVaultRoot from above.
 
