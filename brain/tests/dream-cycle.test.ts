@@ -128,6 +128,7 @@ describe('runFactsCycle', () => {
     expect(res.skipped).toBe(false)
     expect(existsSync(resolve(v, 'memory/facts/_general.md'))).toBe(true)
     expect(existsSync(resolve(v, 'memory/facts/amara-markovic.md'))).toBe(false)
+    expect(readWatermark(deps(v, chat).watermarkPath)).toBeNull()
   })
 
   // PR-C5 #3: watermark advances on a clean run to the source HEAD the cycle processed.
