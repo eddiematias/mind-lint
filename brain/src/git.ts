@@ -46,7 +46,7 @@ export async function gitCommitAndPush(cwd: string, message: string): Promise<{ 
     if (!rebase.ok) {
       const aborted = await tryRun('git rebase --abort', cwd)
       log.push(rebase.out, aborted.out)
-      if (/rebase/i.test(rebase.out) && /conflict|could not apply/i.test(rebase.out)) {
+      if (/conflict|could not apply/i.test(rebase.out)) {
         return { ok: false, output: log.join('\n') }
       }
     }
