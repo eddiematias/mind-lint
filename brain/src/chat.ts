@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 
 // A thin chat transport, mirroring the Embedder interface shape (types.ts:33). The cycle
-// owns graceful-degrade by try/catching complete() at the job boundary — this client throws
+// owns graceful-degrade by try/catching complete() at the job boundary: this client throws
 // on failure (like OllamaEmbedder), it does not degrade itself.
 export interface ChatClient {
   readonly id: string
