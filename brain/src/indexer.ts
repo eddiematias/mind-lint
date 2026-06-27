@@ -42,14 +42,15 @@ function isEntityPath(rel: string): boolean {
 //      wiki/_derived-edges.md -> JBR and pollute the very graph it audits (I-1, a self-referential
 //      loop). basename startsWith('_') excludes them explicitly. Mirrors the /reindex precedent
 //      that treats _index.md / _log.md as non-content.
-function isDerivationSource(rel: string): boolean {
+export function isDerivationSource(rel: string): boolean {
+  if (rel.startsWith('memory/facts/')) return false // slice 3: agent-owned facts store, never an edge source
   if (ENTITY_DIRS.some((d) => rel.startsWith(d))) return false
   if (basename(rel).startsWith('_')) return false
   return true
 }
 
 // Build a basename → best entity path index honoring people > companies > projects.
-function buildResolver(entityPaths: string[]): Map<string, string> {
+export function buildResolver(entityPaths: string[]): Map<string, string> {
   const byBase = new Map<string, string>()
   for (const p of entityPaths) {
     const base = basename(p, '.md')
@@ -120,7 +121,7 @@ export async function buildEntityGazetteer(vaultRoot: string, entityPaths: strin
 }
 
 // "[[Name]]" → bare "Name"
-function rawToBase(toRaw: string): string {
+export function rawToBase(toRaw: string): string {
   return toRaw.replace(/^\[\[/, '').replace(/\]\]$/, '').trim()
 }
 

@@ -40,7 +40,8 @@ served instance, so the live index silently froze at the last serve-stopped rein
 PR #11 moved reindexing in-process (serve is the only writer) and **retired the periodic
 job** (its plist is parked at `~/Library/LaunchAgents/disabled/com.eddie.brain-reindex.plist`,
 recoverable but not loaded). If you ever see a second brain job in `launchctl list`, it
-should not be there.
+should not be there (updated: `com.eddie.brain-dream` IS an expected second job, see
+"Second job: the nightly dream-cycle" below).
 
 ## Why a code change needs `npm run build` on the Mini
 
@@ -156,7 +157,44 @@ in-process cycle rebuild from scratch.)
 **Operator note:** the exact launchd job label, plist filename, and the vault/repo paths
 on the Mini (`~/mind-lint`, `~/mind-lint-vault`) live outside the repo. Substitute the real
 values using both discovery commands: `launchctl list | grep -i brain` (reveals the job
-label, used by `bootout`; expect ONLY `com.eddie.brain-serve`) and `ls ~/Library/LaunchAgents/
-| grep -i brain` (reveals the plist filename, used by `bootstrap`). The label and the
-filename can differ. Confirm the actual label, plist path, and repo paths with the Mini's
-launchd config before running any upgrade.
+label, used by `bootout`; expect TWO brain jobs: `com.eddie.brain-serve` and
+`com.eddie.brain-dream`) and `ls ~/Library/LaunchAgents/ | grep -i brain` (reveals the
+plist filenames, used by `bootstrap`). The label and the filename can differ. Confirm the
+actual labels, plist paths, and repo paths with the Mini's launchd config before running
+any upgrade.
+
+## Second job: the nightly dream-cycle (facts)
+
+Slice 3 adds a SECOND launchd job, `com.eddie.brain-dream` (`node dist/cli.js dream`),
+scheduled nightly. This is safe even though the History section above retired a second job:
+that retired job (`com.eddie.brain-reindex`) failed because it wrote the single-writer
+PGLite DB while serve held it. The dream-cycle never opens the DB; it reads vault
+markdown and git and writes `memory/facts/**` only. It does not contend with serve on the DB.
+
+The only shared resource is the vault git working tree (`~/mind-lint-vault`), which serve
+`git pull`s every 600s. The cycle's `git` ops are best-effort with fetch+rebase and tolerate
+transient lock contention and rejected pushes (it is idempotent and retries next night).
+
+Run model: `node dist/cli.js dream`, scheduled nightly via `StartCalendarInterval`. It needs
+`ANTHROPIC_API_KEY` in the plist `EnvironmentVariables` and `/opt/homebrew/bin` on PATH (node
+and git). If `dreamCycle.facts.enabled` is false or the key is unset, it logs and exits 0.
+The cycle watermark is `brain/data/last-cycle-commit` (gitignored); losing it (a `data/` wipe)
+causes one full re-extraction, then incremental resumes.
+
+If you see `com.eddie.brain-dream` in `launchctl list`, that one IS expected (unlike the
+retired reindex job). Expect exactly two brain jobs: `com.eddie.brain-serve` and
+`com.eddie.brain-dream`.
+
+To bootstrap the dream-cycle plist on the Mini (after substituting the real absolute paths
+and the ANTHROPIC_API_KEY value):
+
+```bash
+# Copy the template and fill in real paths + the API key.
+cp ~/mind-lint/brain/deploy/com.eddie.brain-dream.plist ~/Library/LaunchAgents/
+# Edit the copy to set ANTHROPIC_API_KEY and confirm absolute paths match the Mini.
+launchctl bootstrap "gui/$(id -u)" ~/Library/LaunchAgents/com.eddie.brain-dream.plist
+launchctl list | grep brain   # expect two jobs
+```
+
+The plist template is at `brain/deploy/com.eddie.brain-dream.plist`. The key is NOT in the
+repo; fill it in on the Mini only.
