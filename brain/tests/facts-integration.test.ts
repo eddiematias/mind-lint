@@ -50,16 +50,23 @@ describe('facts end-to-end: cycle writes markdown, reindex indexes it (no LLM)',
 })
 
 // PR-C3: real-chunker boundary test (the definitive R-I2 proof).
-// Runs the REAL chunkMarkdown on a large (>2000 char) facts file and asserts
-// no claim heading is orphaned from its `- source:` metadata line.
-// Facts use ## (h2) per PR-C1, so the chunker splits at each fact boundary,
-// keeping the metadata lines with their heading in the same chunk.
+// With ## per-fact headings, each fact becomes its own small section (~145 chars),
+// so splitSections splits the file at each ## boundary BEFORE splitLong is ever
+// reached (splitLong only fires when a section exceeds maxChars, e.g. 2000).
+// This proves a large facts file never collapses into one blob (R-I2), and that
+// claim headings are never orphaned from their `- source:` metadata across facts.
+// Out-of-scope edge: a SINGLE fact whose rendered block exceeded ~2000 chars would
+// hit splitLong and could split its heading from its metadata; this does not occur
+// in slice 3 because facts are concise and per-file-capped (revisit if facts ever
+// grow that large).
 describe('chunker boundary: large facts file never orphans a claim from its source metadata', () => {
-  it('a large facts file chunks without orphaning a claim from its metadata', () => {
+  it('each fact becomes its own chunk via splitSections; claim headings are never orphaned from source metadata', () => {
     const many = Array.from({ length: 60 }, (_, i) =>
       f({ claim: `Distinct durable claim ${i} with enough words to add real length here` })
     )
     const chunks = chunkMarkdown('memory/facts/x.md', renderFactsFile('X', many), 2000)
+    // Non-vacuity: at least one chunk must contain a ## heading (the file is non-trivial).
+    expect(chunks.some(c => /^## /m.test(c.content))).toBe(true)
     for (const c of chunks) {
       const heads = (c.content.match(/^## /gm) ?? []).length
       const sources = (c.content.match(/^- source:/gm) ?? []).length
