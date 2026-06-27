@@ -5,11 +5,13 @@ import { loadConfig, requireVaultRoot, serveAuthError } from './config.js'
 import type { BrainConfig } from './types.js'
 import { openDb, initSchema, setMeta } from './db.js'
 import { OllamaEmbedder } from './embedder.js'
+import { AnthropicChatClient } from './chat.js'
 import { CHUNKER_VERSION } from './chunker.js'
 import { makeReranker } from './reranker.js'
 import { indexVault } from './indexer.js'
 import { createMcpHttpServer } from './server.js'
 import { pullVault, startReindexLoop } from './reindex-loop.js'
+import { runFactsCycle } from './dream-cycle.js'
 
 // brain/ is symlinked into the vault from the public clone, so Node resolves
 // import.meta.url to the CLONE's real path, not the vault. That's fine for locating
@@ -29,11 +31,12 @@ async function readConfig(): Promise<BrainConfig> {
 async function main() {
   const cmd = process.argv[2]
   const cfg = await readConfig()
-  const db = await openDb(resolve(brainDir(), cfg.dbPath)) // db lives in the clone's brain/data (gitignored)
-  await initSchema(db, cfg.embedder.dimensions)
   const embedder = new OllamaEmbedder(cfg.embedder)
 
   if (cmd === 'reindex') {
+    // DB is only needed for reindex and serve; open it here, not at the top of main.
+    const db = await openDb(resolve(brainDir(), cfg.dbPath))
+    await initSchema(db, cfg.embedder.dimensions)
     const force = process.argv.includes('--force') || process.argv.includes('--full')
     const res = await indexVault(db, embedder, { vaultRoot: cfg.vaultRoot, scopeGlobs: cfg.scopeGlobs, force })
     await setMeta(db, 'chunker_version', CHUNKER_VERSION)
@@ -46,6 +49,9 @@ async function main() {
   }
 
   if (cmd === 'serve') {
+    // DB is only needed for reindex and serve; open it here, not at the top of main.
+    const db = await openDb(resolve(brainDir(), cfg.dbPath))
+    await initSchema(db, cfg.embedder.dimensions)
     const reranker = makeReranker(cfg.reranker)
     const { host, port, authToken } = cfg.server
     const allowNoAuth = process.env.BRAIN_ALLOW_NO_AUTH === '1'
@@ -80,7 +86,33 @@ async function main() {
     return
   }
 
-  console.error('usage: brain <reindex|serve>')
+  if (cmd === 'dream') {
+    const facts = cfg.dreamCycle?.facts
+    if (!facts?.enabled) {
+      console.log('[brain] dream: facts cycle disabled (dreamCycle.facts.enabled=false)')
+      process.exit(0)
+    }
+    const apiKey = process.env[facts.apiKeyEnv]
+    if (!apiKey) {
+      console.log(`[brain] dream: ${facts.apiKeyEnv} not set, skipping facts cycle`)
+      process.exit(0)
+    }
+    const chat = new AnthropicChatClient({ model: facts.model, apiKey, maxTokens: facts.maxTokens })
+    const res = await runFactsCycle({
+      vaultRoot: cfg.vaultRoot,
+      scopeGlobs: cfg.scopeGlobs,
+      chat,
+      embedder,
+      cosineThreshold: facts.cosineThreshold,
+      maxFactsPerFile: facts.maxFactsPerFile,
+      watermarkPath: resolve(brainDir(), 'data/last-cycle-commit'),
+      now: new Date().toISOString().slice(0, 10),
+    })
+    console.log(`[brain] dream: scanned=${res.filesScanned} facts+=${res.factsWritten} chatCalls=${res.chatCalls} skipped=${res.skipped}`)
+    process.exit(0)
+  }
+
+  console.error('usage: brain <reindex|serve|dream>')
   process.exit(1)
 }
 
