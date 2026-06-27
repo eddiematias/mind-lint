@@ -1,10 +1,5 @@
 import { basename } from 'node:path'
 
-// Kept as a local constant for future subtree-aware placement logic.
-// source.ts is a cycle-module concern and must NOT import the DB-coupled indexer.
-const _ENTITY_DIRS = ['wiki/people/', 'wiki/companies/', 'wiki/projects/']
-void _ENTITY_DIRS // suppress unused-var lint until subtree logic lands
-
 // Facts may be extracted from ANY indexed prose INCLUDING entity pages (an entity's own
 // profile is a prime fact source). Excludes: the agent-owned facts store (self-loop),
 // underscore-prefixed agent artifacts, and _index.md rosters.
