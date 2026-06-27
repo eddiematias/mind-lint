@@ -14,6 +14,8 @@ describe('facts markdown round-trip', () => {
     const parsed = parseFactsFile(renderFactsFile('Amara Markovic', facts))
     expect(parsed).toHaveLength(2)
     expect(parsed[0].claim).toBe(facts[0].claim)
+    expect(parsed[0].sourcePath).toBe('memory/learnings/devops.md')
+    expect(parsed[0].superseded).toBe(false)
     expect(parsed[1].entity).toBe('[[Amara Markovic]]')
     expect(parsed[1].kind).toBe('event')
     expect(parsed[1].confidence).toBeCloseTo(0.8)
@@ -29,6 +31,7 @@ describe('facts markdown round-trip', () => {
   it('facts are separated by blank lines (chunker splits at fact boundaries, not mid-fact)', () => {
     const md = renderFactsFile('X', [f(), f({ claim: 'second' })])
     expect(md).toContain('\n\n## ')
+    expect(md.split('\n\n## ').length).toBe(3)
   })
   it('round-trips validFrom/validUntil', () => {
     const parsed = parseFactsFile(renderFactsFile('X', [f({ validFrom: '2026-06-27', validUntil: '2026-12-01' })]))
