@@ -12,6 +12,16 @@ const DEFAULTS = {
   embedder: { type: 'ollama' as const, model: 'nomic-embed-text', endpoint: 'http://localhost:11434', dimensions: 768 },
   reranker: { enabled: true, model: 'Xenova/bge-reranker-base' },
   server: { host: '127.0.0.1', port: 8765, reindexIntervalMs: 600_000 },
+  dreamCycle: {
+    facts: {
+      enabled: false,
+      model: 'claude-haiku-4-5',
+      apiKeyEnv: 'ANTHROPIC_API_KEY',
+      maxTokens: 2000,
+      cosineThreshold: 0.95,
+      maxFactsPerFile: 20,
+    },
+  },
 }
 
 export function loadConfig(raw: Partial<BrainConfig>, vaultRoot: string): BrainConfig {
@@ -22,6 +32,9 @@ export function loadConfig(raw: Partial<BrainConfig>, vaultRoot: string): BrainC
     embedder: { ...DEFAULTS.embedder, ...(raw.embedder ?? {}) },
     reranker: { ...DEFAULTS.reranker, ...(raw.reranker ?? {}) },
     server: resolveServerConfig(raw.server),
+    dreamCycle: {
+      facts: { ...DEFAULTS.dreamCycle.facts, ...(raw.dreamCycle?.facts ?? {}) },
+    },
   }
 }
 

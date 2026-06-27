@@ -47,6 +47,21 @@ describe('loadConfig server block precedence', () => {
   })
 })
 
+describe('dreamCycle config (slice 3)', () => {
+  it('defaults facts.enabled to false and fills defaults', () => {
+    const cfg = loadConfig({}, '/tmp/vault')
+    expect(cfg.dreamCycle?.facts.enabled).toBe(false)
+    expect(cfg.dreamCycle?.facts.model).toBe('claude-haiku-4-5')
+    expect(cfg.dreamCycle?.facts.apiKeyEnv).toBe('ANTHROPIC_API_KEY')
+    expect(cfg.dreamCycle?.facts.cosineThreshold).toBeCloseTo(0.95)
+  })
+  it('merges user overrides over defaults', () => {
+    const cfg = loadConfig({ dreamCycle: { facts: { enabled: true, model: 'claude-haiku-4-5' } } } as never, '/tmp/vault')
+    expect(cfg.dreamCycle?.facts.enabled).toBe(true)
+    expect(cfg.dreamCycle?.facts.maxFactsPerFile).toBe(20) // default still applied
+  })
+})
+
 describe('serveAuthError (fail-closed serve guard)', () => {
   it('errors when no token and no escape hatch (serve must refuse)', () => {
     expect(serveAuthError(undefined, false)).toBeTypeOf('string')

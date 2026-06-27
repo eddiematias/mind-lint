@@ -11,6 +11,18 @@ export interface BrainConfig {
   // owner of the single-writer DB, so no separate reindex process can conflict). Default
   // 600000 (10 min). 0 disables the loop (dev, or when an external reindex is used).
   server: { host: string; port: number; authToken?: string; reindexIntervalMs?: number }
+  // The autonomous dream-cycle (slice 3). Absent/disabled: the `dream` command is a no-op.
+  // The cycle has an LLM (chat) for derivation; retrieval/serve stay zero-LLM.
+  dreamCycle?: {
+    facts: {
+      enabled: boolean
+      model: string        // e.g. 'claude-haiku-4-5'
+      apiKeyEnv: string    // env var holding the Anthropic key, e.g. 'ANTHROPIC_API_KEY'
+      maxTokens: number
+      cosineThreshold: number   // dedup threshold against the existing embedder space
+      maxFactsPerFile: number   // per-source extraction cap
+    }
+  }
 }
 
 export interface Chunk {
