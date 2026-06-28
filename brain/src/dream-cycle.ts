@@ -10,7 +10,7 @@ import { pullVault } from './reindex-loop.js'
 import { gitHead, gitChangedFiles, gitCommitAndPush } from './git.js'
 import { extractFromFile, type ExtractedRow } from './facts/extract.js'
 import { dedupeNewFacts } from './facts/dedup.js'
-import { isFactSource, factFilePath } from './facts/source.js'
+import { isFactSource, factFilePath, sourceDate } from './facts/source.js'
 import { renderFactsFile, parseFactsFile, factKey, type Fact } from './facts/markdown.js'
 
 const ENTITY_DIRS = ['wiki/people/', 'wiki/companies/', 'wiki/projects/']
@@ -71,9 +71,10 @@ export async function runFactsCycle(deps: FactsCycleDeps): Promise<{ filesScanne
     filesDone++
     if (filesDone % 25 === 0) console.log(`[brain] dream: extracted ${filesDone}/${workSet.length}...`)
     let body: string
+    let fm: Record<string, unknown> = {}
     try {
       const raw = await readFile(resolve(deps.vaultRoot, rel), 'utf8')
-      try { body = matter(raw).content } catch { body = raw }
+      try { const parsed = matter(raw); body = parsed.content; fm = parsed.data ?? {} } catch { body = raw }
     } catch { continue }
     if (body.trim().length < MIN_BODY_CHARS) continue
 
@@ -87,7 +88,7 @@ export async function runFactsCycle(deps: FactsCycleDeps): Promise<{ filesScanne
       const entityLabel = targetBase ? `[[${row.entity}]]` : null
       const fact: Fact = {
         claim: row.claim, kind: row.kind, confidence: row.confidence, entity: entityLabel,
-        sourcePath: rel, validFrom: deps.now, validUntil: null, superseded: false, supersededNote: null,
+        sourcePath: rel, validFrom: sourceDate(rel, fm) ?? deps.now, validUntil: null, superseded: false, supersededNote: null,
       }
       const path = factFilePath(entityLabel)
       if (!pending.has(path)) pending.set(path, { label: entityLabel ? row.entity : null, facts: [] })
