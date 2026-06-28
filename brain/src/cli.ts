@@ -106,7 +106,10 @@ async function main() {
       cosineThreshold: facts.cosineThreshold,
       maxFactsPerFile: facts.maxFactsPerFile,
       watermarkPath: resolve(brainDir(), 'data/last-cycle-commit'),
-      now: new Date().toISOString().slice(0, 10),
+      // Local calendar date (YYYY-MM-DD via en-CA) so the commit message and each
+      // fact's validFrom match the operator's wall clock, not UTC. toISOString() is
+      // UTC and stamped tomorrow's date on late-evening-local runs.
+      now: new Date().toLocaleDateString('en-CA'),
     })
     console.log(`[brain] dream: scanned=${res.filesScanned} facts+=${res.factsWritten} chatCalls=${res.chatCalls} skipped=${res.skipped}`)
     process.exit(0)
