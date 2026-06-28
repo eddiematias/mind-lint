@@ -156,6 +156,51 @@ export function resolvedIds(doc: ProposalsDoc, decisions: Decision[]): Set<strin
   return s
 }
 
+// ── Judge prompt/parse + loser assignment (R-I5) ─────────────────────────────
+
+const CONFIDENCE_FLOOR = 0.7
+
+export function buildJudgePrompt(): { system: string } {
+  return {
+    system: [
+      'You compare two FACTS from a personal knowledge base and decide their relationship.',
+      'Use "supersedes" ONLY when one clearly replaces or retires the other (a changed decision,',
+      'a reversed preference, an updated plan), where the difference is a real change, not just',
+      'different wording. Use "coexist" when both can be true at once (two distinct goals, two',
+      'separate facts). Use "no_contradiction" when they are unrelated or restate the same thing.',
+      '',
+      'Reply with ONLY JSON, no prose:',
+      '{"verdict":"supersedes"|"coexist"|"no_contradiction","confidence":0.0-1.0,"axis":"<one line: what changed, or empty>"}',
+      'Reply verdict "supersedes" only when confidence >= 0.7.',
+    ].join('\n'),
+  }
+}
+
+export function parseJudgeJson(raw: string): { verdict: Proposal['verdict']; confidence: number; axis: string } {
+  const start = raw.indexOf('{'); const end = raw.lastIndexOf('}')
+  const fail = { verdict: 'no_contradiction' as const, confidence: 0, axis: '' }
+  if (start === -1 || end === -1 || end < start) return fail
+  let o: Record<string, unknown>
+  try { o = JSON.parse(raw.slice(start, end + 1)) as Record<string, unknown> } catch { return fail }
+  let verdict: Proposal['verdict'] = (o.verdict === 'supersedes' || o.verdict === 'coexist') ? o.verdict : 'no_contradiction'
+  const confidence = typeof o.confidence === 'number' && !Number.isNaN(o.confidence) ? Math.max(0, Math.min(1, o.confidence)) : 0
+  const axis = typeof o.axis === 'string' ? o.axis.trim().replace(/\s+/g, ' ') : ''
+  if (verdict === 'supersedes' && confidence < CONFIDENCE_FLOOR) verdict = 'no_contradiction'
+  return { verdict, confidence, axis }
+}
+
+// Loser = older source date when both paths are dated and differ. Otherwise (equal
+// dates, or one/both undated) -> which-wins: decided:false, human picks on confirm.
+// NEVER null (PR-7): a supersedes verdict must always surface, never silently drop.
+// Frontmatter-only-dated facts read as undated here and route to which-wins.
+export function assignLoser(a: Fact, b: Fact): { loser: Fact; winner: Fact; decided: boolean } {
+  const da = sourceDate(a.sourcePath, {}); const db = sourceDate(b.sourcePath, {})
+  if (da && db && da !== db) {
+    return da < db ? { loser: a, winner: b, decided: true } : { loser: b, winner: a, decided: true }
+  }
+  return { loser: a, winner: b, decided: false }
+}
+
 // All unordered pairs of live (non-superseded) facts within `facts` whose cached cosine
 // is in [lo, hi] and whose pairId is NOT in judged. Facts missing from cache are excluded.
 // Regardless of fact age: fixes the new-vs-old hole where only same-file pairs were checked.
