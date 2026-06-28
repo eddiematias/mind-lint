@@ -244,6 +244,79 @@ export async function writePendingCount(vaultRoot: string, doc: ProposalsDoc, de
   await writeFile(resolve(vaultRoot, 'memory/facts/_supersession-pending-count'), String(pending))
 }
 
+export interface ApplyDeps { vaultRoot: string; proposalsPath: string; decisionsPath: string }
+
+// Same normalized key markdown.factKey computes (inline to avoid a struck-vs-live mismatch;
+// parseFactsFile strips ~~ so a struck fact's claim text still keys to its live form).
+function keyOf(ref: { sourcePath: string; claim: string }): string {
+  return `${ref.sourcePath}\0${ref.claim.trim().replace(/\s+/g, ' ').toLowerCase()}`
+}
+
+// Find the fact file + index whose factKey matches the target. Scans all fact files
+// (a loser may live in _general or any entity file). Returns the file's title too (PR-3).
+async function findFact(vaultRoot: string, keyTarget: string): Promise<{ rel: string; facts: Fact[]; idx: number; title: string | null } | null> {
+  const files = await fg('memory/facts/*.md', { cwd: vaultRoot, dot: true })
+  for (const rel of files) {
+    if (basename(rel).startsWith('_supersession')) continue
+    let raw: string
+    try { raw = await readFile(resolve(vaultRoot, rel), 'utf8') } catch { continue }
+    const facts = parseFactsFile(raw)
+    const idx = facts.findIndex((f) => factKey(f) === keyTarget)
+    if (idx !== -1) return { rel, facts, idx, title: parseFactsTitle(raw) }
+  }
+  return null
+}
+
+export async function applyConfirmedSupersessions(
+  deps: ApplyDeps,
+): Promise<{ applied: number; stale: number; reverted: number }> {
+  const doc = parseProposals(await readMaybe(deps.proposalsPath))
+  const decisions = parseDecisions(await readMaybe(deps.decisionsPath))
+  const lifecycleIds = new Set(doc.lifecycle.map((l) => l.id))
+  const byId = new Map(doc.proposals.map((p) => [p.id, p]))
+  let applied = 0, stale = 0, reverted = 0
+
+  for (const dcn of decisions) {
+    if (dcn.status !== 'confirmed' || lifecycleIds.has(dcn.id)) continue
+    const p = byId.get(dcn.id)
+    if (!p) continue
+    // PR-6: which-wins -- the human's chosenLoserPath decides which side loses.
+    let effLoser = p.loser, effWinner = p.winner
+    if (!p.loserDecided) {
+      if (dcn.chosenLoserPath === p.winner.sourcePath) { effLoser = p.winner; effWinner = p.loser }
+      else if (dcn.chosenLoserPath !== p.loser.sourcePath) {
+        // confirmed a which-wins without a valid loser= pick: cannot apply.
+        doc.lifecycle.push({ kind: 'stale', id: dcn.id }); lifecycleIds.add(dcn.id); stale++; continue
+      }
+    }
+    const hit = await findFact(deps.vaultRoot, keyOf(effLoser))
+    if (!hit) { doc.lifecycle.push({ kind: 'stale', id: dcn.id }); lifecycleIds.add(dcn.id); stale++; continue }
+    const f = hit.facts[hit.idx]
+    f.superseded = true
+    const wDate = sourceDate(effWinner.sourcePath, {}) ?? ''
+    f.supersededNote = `superseded by: ${effWinner.claim} (${wDate}) [${p.verdict} ${p.confidence.toFixed(2)}]`
+    if (wDate) f.validUntil = wDate
+    await writeFile(resolve(deps.vaultRoot, hit.rel), renderFactsFile(hit.title, hit.facts)) // PR-3 title
+    doc.lifecycle.push({ kind: 'applied', id: dcn.id }); lifecycleIds.add(dcn.id); applied++
+  }
+
+  // Reversal (PR-9): an applied strike a human un-struck -> register it so the probe never
+  // re-proposes. Auto-detected only for loserDecided (auto) proposals: for which-wins the
+  // struck side is ambiguous without storing it, so which-wins reversal is NOT auto-detected
+  // (documented limitation; the human un-strikes, and dismisses if it is re-proposed).
+  for (const l of doc.lifecycle.filter((x) => x.kind === 'applied')) {
+    const p = byId.get(l.id)
+    if (!p || !p.loserDecided) continue
+    if (doc.lifecycle.some((x) => x.kind === 'reverted' && x.id === l.id)) continue
+    const hit = await findFact(deps.vaultRoot, keyOf(p.loser))
+    if (hit && !hit.facts[hit.idx].superseded) { doc.lifecycle.push({ kind: 'reverted', id: l.id }); reverted++ }
+  }
+
+  await writeFile(deps.proposalsPath, renderProposals(doc))
+  await writePendingCount(deps.vaultRoot, doc, decisions) // PR-4
+  return { applied, stale, reverted }
+}
+
 export async function runSupersessionProbe(
   deps: ProbeDeps,
 ): Promise<{ judged: number; proposed: number; capped: boolean; skipped: boolean }> {
