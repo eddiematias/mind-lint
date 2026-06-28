@@ -1,7 +1,7 @@
 import type { Embedder } from './types.js'
 
 interface OllamaCfg { model: string; endpoint: string; dimensions: number }
-interface OllamaOpts { maxAttempts?: number; retryDelayMs?: number }
+interface OllamaOpts { maxAttempts?: number; retryDelayMs?: number; batchSize?: number }
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 
@@ -17,7 +17,9 @@ export class OllamaEmbedder implements Embedder {
     this.id = `ollama:${cfg.model}:${cfg.dimensions}`
   }
 
-  async embed(texts: string[]): Promise<number[][]> {
+  // Embeds a single batch of texts with retry logic. Batch size must be
+  // small enough that Ollama's model runner can handle it without crashing.
+  private async embedBatch(batch: string[]): Promise<number[][]> {
     const maxAttempts = this.opts.maxAttempts ?? 3
     const retryDelayMs = this.opts.retryDelayMs ?? 250
     let lastError: Error = new Error('unreachable')
@@ -27,7 +29,7 @@ export class OllamaEmbedder implements Embedder {
         res = await this.fetchImpl(`${this.cfg.endpoint}/api/embed`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ model: this.cfg.model, input: texts }),
+          body: JSON.stringify({ model: this.cfg.model, input: batch }),
         })
       } catch (e) {
         lastError = e instanceof Error ? e : new Error(String(e))
@@ -53,6 +55,21 @@ export class OllamaEmbedder implements Embedder {
     }
     // TypeScript path: unreachable because the loop always throws on final attempt.
     throw lastError
+  }
+
+  // Splits texts into consecutive batches and embeds each one sequentially.
+  // Sequential (not parallel) because Ollama is a single-runner process:
+  // concurrent requests worsen contention and can trigger the same EOF crash.
+  async embed(texts: string[]): Promise<number[][]> {
+    if (texts.length === 0) return []
+    const batchSize = this.opts.batchSize ?? 64
+    const results: number[][] = []
+    for (let start = 0; start < texts.length; start += batchSize) {
+      const batch = texts.slice(start, start + batchSize)
+      const vecs = await this.embedBatch(batch)
+      results.push(...vecs)
+    }
+    return results
   }
 }
 
