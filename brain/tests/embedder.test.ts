@@ -96,6 +96,92 @@ describe('OllamaEmbedder', () => {
   })
 })
 
+describe('OllamaEmbedder batching', () => {
+  // Fake fetch: returns embeddings where each vector is [batchCallIndex, indexWithinBatch]
+  // so we can verify both order and which call produced each vector.
+  function makeBatchFetch() {
+    let callCount = 0
+    const calls: string[][] = []
+    const fetchMock = vi.fn().mockImplementation(async (_url: string, init: RequestInit) => {
+      const body = JSON.parse(init.body as string) as { input: string[] }
+      const batchIndex = callCount++
+      calls.push(body.input)
+      const embeddings = body.input.map((_: string, i: number) => [batchIndex, i])
+      return { ok: true, json: async () => ({ embeddings }) }
+    })
+    return { fetchMock, calls, getCallCount: () => callCount }
+  }
+
+  it('chunking + order: 150 texts with batchSize 64 calls fetch 3 times and preserves input order', async () => {
+    const { fetchMock, calls, getCallCount } = makeBatchFetch()
+    const texts = Array.from({ length: 150 }, (_, i) => `text-${i}`)
+    const e = new OllamaEmbedder(
+      { model: 'm', endpoint: 'http://x', dimensions: 2 },
+      fetchMock as unknown as typeof fetch,
+      { maxAttempts: 1, retryDelayMs: 0, batchSize: 64 },
+    )
+    const out = await e.embed(texts)
+    // ceil(150/64) = 3 fetch calls
+    expect(getCallCount()).toBe(3)
+    expect(out).toHaveLength(150)
+    // Batch 0 items 0..63: vector[0]=0 (batchIndex), vector[1]=position in batch
+    expect(out[0]).toEqual([0, 0])
+    expect(out[63]).toEqual([0, 63])
+    // Batch 1 items 64..127: batchIndex=1
+    expect(out[64]).toEqual([1, 0])
+    // Batch 2 item 149 = index 149-128=21 in batch 2: batchIndex=2
+    expect(out[149]).toEqual([2, 21])
+    // Verify the inputs sent to each batch are the right slices
+    expect(calls[0]).toEqual(texts.slice(0, 64))
+    expect(calls[1]).toEqual(texts.slice(64, 128))
+    expect(calls[2]).toEqual(texts.slice(128, 150))
+  })
+
+  it('small input unchanged: <= batchSize texts calls fetch exactly once', async () => {
+    const { fetchMock, getCallCount } = makeBatchFetch()
+    const texts = Array.from({ length: 10 }, (_, i) => `t-${i}`)
+    const e = new OllamaEmbedder(
+      { model: 'm', endpoint: 'http://x', dimensions: 2 },
+      fetchMock as unknown as typeof fetch,
+      { maxAttempts: 1, retryDelayMs: 0, batchSize: 64 },
+    )
+    const out = await e.embed(texts)
+    expect(getCallCount()).toBe(1)
+    expect(out).toHaveLength(10)
+    expect(out[0]).toEqual([0, 0])
+    expect(out[9]).toEqual([0, 9])
+  })
+
+  it('empty input: embed([]) returns [] and calls fetch zero times', async () => {
+    const { fetchMock, getCallCount } = makeBatchFetch()
+    const e = new OllamaEmbedder(
+      { model: 'm', endpoint: 'http://x', dimensions: 2 },
+      fetchMock as unknown as typeof fetch,
+      { maxAttempts: 1, retryDelayMs: 0, batchSize: 64 },
+    )
+    const out = await e.embed([])
+    expect(out).toEqual([])
+    expect(getCallCount()).toBe(0)
+  })
+
+  it('per-batch retry still works: first attempt 400 then 200 succeeds', async () => {
+    let calls = 0
+    const fetchMock = vi.fn().mockImplementation(async () => {
+      calls++
+      if (calls === 1) return { ok: false, status: 400, text: async () => 'EOF' }
+      return { ok: true, json: async () => ({ embeddings: [[0.9, 0.8]] }) }
+    })
+    const e = new OllamaEmbedder(
+      { model: 'm', endpoint: 'http://x', dimensions: 2 },
+      fetchMock as unknown as typeof fetch,
+      { maxAttempts: 3, retryDelayMs: 0, batchSize: 64 },
+    )
+    const out = await e.embed(['only-one-text'])
+    expect(out).toEqual([[0.9, 0.8]])
+    expect(calls).toBe(2)
+  })
+})
+
 describe('Embedder.id', () => {
   it('OllamaEmbedder.id encodes model + dimensions', () => {
     const e = new OllamaEmbedder({ model: 'nomic-embed-text', endpoint: 'http://localhost:11434', dimensions: 768 })
