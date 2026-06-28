@@ -80,6 +80,17 @@ if [ -f "$CLAUDE_DIR/wiki/_derived-edges.md" ]; then
     fi
 fi
 
+# Possible supersessions awaiting review. PR-4: the cycle writes an ACCURATE pending
+# count (proposals minus resolved) to this file; the append-only proposals file alone
+# would overcount forever. We just read the count.
+SUP_COUNT_FILE="$CLAUDE_DIR/memory/facts/_supersession-pending-count"
+if [ -f "$SUP_COUNT_FILE" ]; then
+  SUP_PENDING=$(tr -dc '0-9' < "$SUP_COUNT_FILE")
+  if [ -n "$SUP_PENDING" ] && [ "$SUP_PENDING" -gt 0 ]; then
+    echo "  $SUP_PENDING possible supersession(s) -- run /review-derived"
+  fi
+fi
+
 # Check error rules count
 if [ -f "$CLAUDE_DIR/rules/error-rules.md" ]; then
     RULES=$(grep -cE "^[0-9]+\." "$CLAUDE_DIR/rules/error-rules.md" 2>/dev/null || true)
