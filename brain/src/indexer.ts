@@ -29,6 +29,12 @@ function isEntityPath(rel: string): boolean {
   return ENTITY_DIRS.some((d) => rel.startsWith(d)) && basename(rel) !== '_index.md'
 }
 
+// Ledger files under memory/facts/ are agent scratch state, not knowledge. Excluding
+// them from indexing keeps un-applied supersession proposal text out of /recall (R-M4).
+export function isIndexable(rel: string): boolean {
+  return !/^memory\/facts\/_supersession-/.test(rel)
+}
+
 // A file is a derivation source if it is indexed (in scopeGlobs) but is NOT an entity file
 // and is NOT an agent-owned underscore file. raw/ is not in scopeGlobs so it never appears
 // here (C3). Two exclusion mechanisms, by DIFFERENT keys:
@@ -156,6 +162,7 @@ export async function indexVault(db: PGlite, embedder: Embedder, cfg: IndexCfg, 
   }
 
   for (const rel of matches) {
+    if (!isIndexable(rel)) continue
     const raw = await readFile(resolve(cfg.vaultRoot, rel), 'utf8')
     // Skip key includes the chunker version + embedder identity, so a serialization
     // change or an embedder swap changes every file's hash and forces a re-chunk.

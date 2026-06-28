@@ -22,6 +22,12 @@ export interface BrainConfig {
       cosineThreshold: number   // dedup threshold against the existing embedder space
       maxFactsPerFile: number   // per-source extraction cap
     }
+    supersession: {
+      enabled: boolean
+      neighborLo: number     // candidate cosine lower bound (similar enough to maybe conflict)
+      neighborHi: number     // upper bound (exclude near-identical duplicates)
+      maxPairsPerRun: number // hard cap on LLM judge calls per night (logged if hit)
+    }
   }
 }
 

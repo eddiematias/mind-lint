@@ -41,3 +41,13 @@ graph as `source: derived, role: references`). Steps:
    artifact and advancing the mark-reviewed watermark are entirely vault-side (no brain needed).
    If the brain is down when a suppress is requested, tell the user it is unreachable and how to
    start it (`cd ~/.claude/brain && npm run serve`).
+
+## Possible supersessions (facts)
+
+1. Read `memory/facts/_supersession-proposals.md`. Parse each `## <id>` block (verdict, confidence, loser, winner, axis, loserDecided). Read `memory/facts/_supersession-decisions.md` (may be absent) for ids already `confirmed`/`dismissed`, and read the `## lifecycle` block of the proposals file for ids already `applied`/`stale`/`reverted`/`checked`.
+2. Show ONLY proposals whose id is not yet in decisions and not in the lifecycle settled set. For each, print the loser claim, the winner claim, the axis, the confidence, and whether `loserDecided` is false (which-wins: you must pick which side loses).
+3. For each surfaced proposal, ask Eddie: confirm (apply the strike), dismiss (never propose again), or skip (leave pending).
+4. Write his decisions to `memory/facts/_supersession-decisions.md` (APPEND one line per decision; this file is human/laptop-owned, the cycle only reads it):
+   - `<id>: confirmed` (or `<id>: confirmed loser=<sourcePath>` when `loserDecided` is false and Eddie picks the loser)
+   - `<id>: dismissed`
+5. Do NOT edit `_supersession-proposals.md` or any `memory/facts/*.md` fact file. The next nightly cycle applies confirmed strikes (it is the sole fact-file writer). Reversal later is: un-strike the fact in its file; the cycle records that as a dismissal.

@@ -21,6 +21,12 @@ const DEFAULTS = {
       cosineThreshold: 0.95,
       maxFactsPerFile: 20,
     },
+    supersession: {
+      enabled: false,
+      neighborLo: 0.80,
+      neighborHi: 0.985,
+      maxPairsPerRun: 50,
+    },
   },
 }
 
@@ -34,6 +40,7 @@ export function loadConfig(raw: Partial<BrainConfig>, vaultRoot: string): BrainC
     server: resolveServerConfig(raw.server),
     dreamCycle: {
       facts: { ...DEFAULTS.dreamCycle.facts, ...(raw.dreamCycle?.facts ?? {}) },
+      supersession: { ...DEFAULTS.dreamCycle.supersession, ...(raw.dreamCycle?.supersession ?? {}) },
     },
   }
 }

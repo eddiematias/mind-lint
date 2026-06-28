@@ -166,4 +166,23 @@ describe('runFactsCycle', () => {
     const g = await readFile(resolve(v, 'memory/facts/_general.md'), 'utf8')
     expect(g).toContain('Nobody did a thing once')
   })
+
+  it('stamps validFrom from a dated source path, not the cycle run date', async () => {
+    const v = await vault()
+    // add a dated journal source with a long-enough body
+    await mkdir(resolve(v, 'journal'), { recursive: true })
+    await writeFile(resolve(v, 'journal/2026-05-13.md'),
+      'Removed the May 27 timeline from the income goal, it will happen when it happens.')
+    await run('git add -A && git commit -q -m journal', { cwd: v })
+    const chat = new FakeChatClient((_s, u) =>
+      u.includes('2026-05-13')
+        ? '[{"claim":"Eddie removed the May 27 timeline from the income goal","kind":"belief","confidence":0.9,"entity":null}]'
+        : '[]')
+    const d = { ...deps(v, chat), scopeGlobs: ['memory/**/*.md', 'wiki/**/*.md', 'journal/**/*.md'] }
+    await runFactsCycle(d)
+    const g = await readFile(resolve(v, 'memory/facts/_general.md'), 'utf8')
+    // deps(...).now is '2026-06-27'; the fact must carry the SOURCE date instead.
+    expect(g).toContain('`2026-05-13`')
+    expect(g).not.toContain('`2026-06-27`')
+  })
 })

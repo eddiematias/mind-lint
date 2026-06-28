@@ -12,6 +12,8 @@ import { indexVault } from './indexer.js'
 import { createMcpHttpServer } from './server.js'
 import { pullVault, startReindexLoop } from './reindex-loop.js'
 import { runFactsCycle } from './dream-cycle.js'
+import { restampValidFrom, applyConfirmedSupersessions, runSupersessionProbe } from './facts/supersession.js'
+import { gitCommitAndPush } from './git.js'
 
 // brain/ is symlinked into the vault from the public clone, so Node resolves
 // import.meta.url to the CLONE's real path, not the vault. That's fine for locating
@@ -98,6 +100,19 @@ async function main() {
       process.exit(0)
     }
     const chat = new AnthropicChatClient({ model: facts.model, apiKey, maxTokens: facts.maxTokens })
+    const now = new Date().toLocaleDateString('en-CA')
+    const proposalsPath = resolve(cfg.vaultRoot, 'memory/facts/_supersession-proposals.md')
+    const decisionsPath = resolve(cfg.vaultRoot, 'memory/facts/_supersession-decisions.md')
+
+    // Phase A+B: pull, re-stamp valid_from, apply confirmed supersessions (cycle = sole fact-file writer).
+    await pullVault(cfg.vaultRoot)
+    const restamp = await restampValidFrom(cfg.vaultRoot)
+    const applyRes = await applyConfirmedSupersessions({ vaultRoot: cfg.vaultRoot, proposalsPath, decisionsPath })
+    if (restamp.filesChanged > 0 || applyRes.applied + applyRes.stale + applyRes.reverted > 0) {
+      await gitCommitAndPush(cfg.vaultRoot, `supersession: restamp ${restamp.filesChanged} apply ${applyRes.applied} stale ${applyRes.stale} reverted ${applyRes.reverted} ${now}`)
+    }
+
+    // Phase C: facts extraction (slice 3, commits + advances watermark internally).
     const res = await runFactsCycle({
       vaultRoot: cfg.vaultRoot,
       scopeGlobs: cfg.scopeGlobs,
@@ -106,12 +121,22 @@ async function main() {
       cosineThreshold: facts.cosineThreshold,
       maxFactsPerFile: facts.maxFactsPerFile,
       watermarkPath: resolve(brainDir(), 'data/last-cycle-commit'),
-      // Local calendar date (YYYY-MM-DD via en-CA) so the commit message and each
-      // fact's validFrom match the operator's wall clock, not UTC. toISOString() is
-      // UTC and stamped tomorrow's date on late-evening-local runs.
-      now: new Date().toLocaleDateString('en-CA'),
+      now,
     })
     console.log(`[brain] dream: scanned=${res.filesScanned} facts+=${res.factsWritten} chatCalls=${res.chatCalls} skipped=${res.skipped}`)
+
+    // Phase E: supersession probe (gate-tier; appends proposals, writes no fact file), then commit.
+    const sup = cfg.dreamCycle?.supersession
+    if (sup?.enabled) {
+      const probe = await runSupersessionProbe({
+        vaultRoot: cfg.vaultRoot, chat, embedder,
+        cachePath: resolve(brainDir(), 'data/facts-vectors.json'),
+        proposalsPath, decisionsPath,
+        neighborLo: sup.neighborLo, neighborHi: sup.neighborHi, maxPairsPerRun: sup.maxPairsPerRun, now,
+      })
+      await gitCommitAndPush(cfg.vaultRoot, `supersession: ${probe.proposed} candidate(s) ${now}`)
+      console.log(`[brain] dream: supersession judged=${probe.judged} proposed=${probe.proposed} capped=${probe.capped} skipped=${probe.skipped}`)
+    }
     process.exit(0)
   }
 
