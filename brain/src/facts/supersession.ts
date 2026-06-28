@@ -5,6 +5,9 @@ import fg from 'fast-glob'
 import { parseFactsFile, renderFactsFile, factKey, type Fact } from './markdown.js'
 import { sourceDate } from './source.js'
 import { cosine } from './dedup.js'
+import type { ChatClient } from '../chat.js'
+import type { Embedder } from '../types.js'
+import { loadVectorCache, saveVectorCache, embedFactsCached, pruneVectorCache } from './vector-cache.js'
 
 // Recover a facts file's title label from the file ITSELF (PR-3), not from the facts:
 // renderFactsFile writes '# Facts: <label>' or '# Facts (unattached)'. Parsing the
@@ -220,4 +223,87 @@ export function candidatePairs(
     }
   }
   return out
+}
+
+// ── Probe orchestration ───────────────────────────────────────────────────────
+
+export interface ProbeDeps {
+  vaultRoot: string; chat: ChatClient; embedder: Embedder
+  cachePath: string; proposalsPath: string; decisionsPath: string
+  neighborLo: number; neighborHi: number; maxPairsPerRun: number; now: string
+}
+
+async function readMaybe(path: string): Promise<string> {
+  try { return await readFile(path, 'utf8') } catch { return '' }
+}
+
+// PR-4: count of proposals still awaiting a human decision, written for SessionStart.
+export async function writePendingCount(vaultRoot: string, doc: ProposalsDoc, decisions: Decision[]): Promise<void> {
+  const resolved = resolvedIds(doc, decisions)
+  const pending = doc.proposals.filter((p) => !resolved.has(p.id)).length
+  await writeFile(resolve(vaultRoot, 'memory/facts/_supersession-pending-count'), String(pending))
+}
+
+export async function runSupersessionProbe(
+  deps: ProbeDeps,
+): Promise<{ judged: number; proposed: number; capped: boolean; skipped: boolean }> {
+  const doc = parseProposals(await readMaybe(deps.proposalsPath))
+  const decisions = parseDecisions(await readMaybe(deps.decisionsPath))
+  const judged = judgedIds(doc, decisions)
+  const cache = await loadVectorCache(deps.cachePath)
+
+  const files = await fg('memory/facts/*.md', { cwd: deps.vaultRoot, dot: true })
+  const liveKeys = new Set<string>()
+  let allPairs: { a: Fact; b: Fact; id: string }[] = []
+  try {
+    for (const rel of files) {
+      if (basename(rel).startsWith('_supersession')) continue
+      let facts: Fact[]
+      try { facts = parseFactsFile(await readFile(resolve(deps.vaultRoot, rel), 'utf8')) } catch { continue }
+      const live = facts.filter((f) => !f.superseded)
+      live.forEach((f) => liveKeys.add(factKey(f)))
+      await embedFactsCached(deps.embedder, live, cache)
+      allPairs.push(...candidatePairs(facts, cache, deps.neighborLo, deps.neighborHi, judged))
+    }
+  } catch (e) {
+    console.warn('[brain] dream: supersession embed failed, skipping probe:', e)
+    return { judged: 0, proposed: 0, capped: false, skipped: true }
+  }
+  pruneVectorCache(cache, liveKeys) // PR-2: prune ONCE, against the union of all live keys
+  await saveVectorCache(deps.cachePath, cache)
+
+  const capped = allPairs.length > deps.maxPairsPerRun
+  if (capped) {
+    console.log(`[brain] dream: ${allPairs.length} candidate pairs, judging ${deps.maxPairsPerRun} this run, rest deferred to next run`)
+    allPairs = allPairs.slice(0, deps.maxPairsPerRun)
+  }
+
+  const { system } = buildJudgePrompt()
+  let proposed = 0, judgedCount = 0
+  for (const { a, b, id } of allPairs) {
+    let r: { verdict: Proposal['verdict']; confidence: number; axis: string }
+    try {
+      r = parseJudgeJson(await deps.chat.complete(system, `A: ${a.claim}\nB: ${b.claim}`))
+    } catch (e) {
+      // PR-5: a chat failure must NOT record checked (that would burn the pair as
+      // judged forever during an outage). Leave it unjudged so it is retried next run.
+      console.warn(`[brain] dream: judge failed for ${id}, will retry next run:`, e)
+      continue
+    }
+    judgedCount++
+    if (r.verdict === 'supersedes') {
+      const la = assignLoser(a, b) // never null (PR-7)
+      doc.proposals.push({
+        id, loser: { sourcePath: la.loser.sourcePath, claim: la.loser.claim },
+        winner: { sourcePath: la.winner.sourcePath, claim: la.winner.claim },
+        verdict: r.verdict, confidence: r.confidence, axis: r.axis, loserDecided: la.decided, proposedOn: deps.now,
+      })
+      proposed++
+    } else {
+      doc.lifecycle.push({ kind: 'checked', id }) // genuine negative verdict, do not re-judge
+    }
+  }
+  await writeFile(deps.proposalsPath, renderProposals(doc)) // PR-8: deps path, not hardcoded
+  await writePendingCount(deps.vaultRoot, doc, decisions) // PR-4
+  return { judged: judgedCount, proposed, capped, skipped: false }
 }
