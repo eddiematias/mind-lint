@@ -2,8 +2,9 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { resolve, basename } from 'node:path'
 import { createHash } from 'node:crypto'
 import fg from 'fast-glob'
-import { parseFactsFile, renderFactsFile, type Fact } from './markdown.js'
+import { parseFactsFile, renderFactsFile, factKey, type Fact } from './markdown.js'
 import { sourceDate } from './source.js'
+import { cosine } from './dedup.js'
 
 // Recover a facts file's title label from the file ITSELF (PR-3), not from the facts:
 // renderFactsFile writes '# Facts: <label>' or '# Facts (unattached)'. Parsing the
@@ -153,4 +154,25 @@ export function resolvedIds(doc: ProposalsDoc, decisions: Decision[]): Set<strin
   for (const l of doc.lifecycle) s.add(l.id)
   for (const d of decisions) s.add(d.id)
   return s
+}
+
+// All unordered pairs of live (non-superseded) facts within `facts` whose cached cosine
+// is in [lo, hi] and whose pairId is NOT in judged. Facts missing from cache are excluded.
+// Regardless of fact age: fixes the new-vs-old hole where only same-file pairs were checked.
+export function candidatePairs(
+  facts: Fact[], cache: Map<string, number[]>, lo: number, hi: number, judged: Set<string>,
+): { a: Fact; b: Fact; id: string }[] {
+  const live = facts.filter((f) => !f.superseded && cache.has(factKey(f)))
+  const out: { a: Fact; b: Fact; id: string }[] = []
+  for (let i = 0; i < live.length; i++) {
+    for (let j = i + 1; j < live.length; j++) {
+      const a = live[i], b = live[j]
+      const c = cosine(cache.get(factKey(a))!, cache.get(factKey(b))!)
+      if (c < lo || c > hi) continue
+      const id = pairId(a, b)
+      if (judged.has(id)) continue
+      out.push({ a, b, id })
+    }
+  }
+  return out
 }
