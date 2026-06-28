@@ -65,7 +65,11 @@ export async function runFactsCycle(deps: FactsCycleDeps): Promise<{ filesScanne
   // Accumulate new facts per target file, then write once per file.
   const pending = new Map<string, { label: string | null; facts: Fact[] }>()
 
+  console.log(`[brain] dream: ${workSet.length} files to extract`)
+  let filesDone = 0
   for (const rel of workSet) {
+    filesDone++
+    if (filesDone % 25 === 0) console.log(`[brain] dream: extracted ${filesDone}/${workSet.length}...`)
     let body: string
     try {
       const raw = await readFile(resolve(deps.vaultRoot, rel), 'utf8')

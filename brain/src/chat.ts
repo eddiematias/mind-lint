@@ -8,13 +8,15 @@ export interface ChatClient {
   complete(system: string, user: string): Promise<string>
 }
 
-interface AnthropicCfg { model: string; apiKey: string; maxTokens?: number }
+interface AnthropicCfg { model: string; apiKey: string; maxTokens?: number; timeoutMs?: number }
 
 export class AnthropicChatClient implements ChatClient {
   readonly id: string
   private client: Anthropic
   constructor(private cfg: AnthropicCfg) {
-    this.client = new Anthropic({ apiKey: cfg.apiKey })
+    // timeoutMs caps a hung call so one stuck file cannot stall the nightly run indefinitely.
+    // The SDK retries timeouts, 5xx, and 429 automatically (maxRetries: 2 total).
+    this.client = new Anthropic({ apiKey: cfg.apiKey, timeout: cfg.timeoutMs ?? 120_000, maxRetries: 2 })
     this.id = `anthropic:${cfg.model}`
   }
   async complete(system: string, user: string): Promise<string> {

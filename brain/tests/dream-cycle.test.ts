@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest'
+import { describe, it, expect, afterEach, vi } from 'vitest'
 import { mkdtemp, rm, writeFile, mkdir, readFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -42,7 +42,10 @@ describe('runFactsCycle', () => {
       u.includes('Amara')
         ? '[{"claim":"Amara is in school","kind":"fact","confidence":0.9,"entity":"Amara Markovic"}]'
         : '[{"claim":"The brain reindexes every 600s","kind":"fact","confidence":0.9,"entity":null}]')
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
     const res = await runFactsCycle(deps(v, chat))
+    const loggedLines = logSpy.mock.calls.map((c) => String(c[0]))
+    logSpy.mockRestore()
     expect(res.skipped).toBe(false)
     expect(existsSync(resolve(v, 'memory/facts/amara-markovic.md'))).toBe(true)
     expect(existsSync(resolve(v, 'memory/facts/_general.md'))).toBe(true)
@@ -50,6 +53,8 @@ describe('runFactsCycle', () => {
     expect(amara).toContain('Amara is in school')
     expect(amara).toContain('[[Amara Markovic]]')
     expect(readWatermark(deps(v, chat).watermarkPath)).toBeTruthy()
+    // Progress logging: the "files to extract" line must have been emitted.
+    expect(loggedLines.some((l) => l.includes('files to extract'))).toBe(true)
   })
 
   it('a second run with no source change makes zero chat calls (change-gate)', async () => {
