@@ -173,3 +173,18 @@ export async function captureSource(rawUrl: string, opts: CaptureOpts): Promise<
   await writeFile(path, renderSourceItem(item), 'utf8')
   return { path, created: !existing, item }
 }
+
+// argv is process.argv.slice(4) for `brain sources capture <url> [--why "..."] [--tags a,b]`.
+// The url must be the first argument; flags follow.
+export function parseCaptureArgs(argv: string[]): { url: string; why?: string; tags?: string[] } | null {
+  const url = argv[0]
+  if (!url || url.startsWith('--')) return null
+  const flagVal = (flag: string): string | undefined => {
+    const i = argv.indexOf(flag)
+    return i >= 0 ? argv[i + 1] : undefined
+  }
+  const whyVal = flagVal('--why')
+  const tagsRaw = flagVal('--tags')
+  const tags = tagsRaw ? tagsRaw.split(',').map((t) => t.trim()).filter(Boolean) : undefined
+  return { url, why: whyVal, tags }
+}

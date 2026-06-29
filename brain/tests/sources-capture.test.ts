@@ -124,7 +124,7 @@ describe('captureSource', () => {
   })
 })
 
-import { fetchOpenGraph } from '../src/sources/capture.js'
+import { fetchOpenGraph, parseCaptureArgs } from '../src/sources/capture.js'
 
 const fakeFetch = (body: { ok?: boolean; html?: string; throws?: boolean }): typeof fetch =>
   (async () => {
@@ -152,5 +152,18 @@ describe('fetchOpenGraph', () => {
   it('returns failed on a non-ok response', async () => {
     const r = await fetchOpenGraph('https://x.test/a', fakeFetch({ ok: false }))
     expect(r.status).toBe('failed')
+  })
+})
+
+describe('parseCaptureArgs', () => {
+  it('parses url with --why and --tags', () => {
+    const r = parseCaptureArgs(['https://x.test/a', '--why', 'hook idea', '--tags', 'ai, hooks'])
+    expect(r).toEqual({ url: 'https://x.test/a', why: 'hook idea', tags: ['ai', 'hooks'] })
+  })
+  it('parses a bare url', () => {
+    expect(parseCaptureArgs(['https://x.test/a'])).toEqual({ url: 'https://x.test/a', why: undefined, tags: undefined })
+  })
+  it('returns null with no url', () => {
+    expect(parseCaptureArgs(['--why', 'x'])).toBeNull()
   })
 })
