@@ -1,4 +1,4 @@
-import type { Platform, SourceType } from './markdown.js'
+import type { Platform, SourceType, OgFetchStatus } from './markdown.js'
 
 const TRACKING_PARAMS = [/^igsh$/, /^utm_/, /^fbclid$/, /^feature$/, /^si$/]
 
@@ -61,4 +61,36 @@ export function slugify(input: string): string {
     .slice(0, 60)
     .replace(/-+$/, '')
   return out || 'item'
+}
+
+export interface OgResult { title: string; description: string; image: string; status: OgFetchStatus }
+
+const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36'
+
+function decodeEntities(s: string): string {
+  return s.replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+}
+
+export async function fetchOpenGraph(url: string, fetchImpl: typeof fetch = fetch): Promise<OgResult> {
+  const empty = (status: OgFetchStatus): OgResult => ({ title: '', description: '', image: '', status })
+  let html = ''
+  try {
+    const res = await fetchImpl(url, { headers: { 'user-agent': UA, accept: 'text/html' }, redirect: 'follow' })
+    if (!res.ok) return empty('failed')
+    html = await res.text()
+  } catch {
+    return empty('failed')
+  }
+  const og = (prop: string): string => {
+    const patterns = [
+      new RegExp(`<meta[^>]+(?:property|name)=["']og:${prop}["'][^>]*\\scontent=["']([^"']*)["']`, 'i'),
+      new RegExp(`<meta[^>]+content=["']([^"']*)["'][^>]*(?:property|name)=["']og:${prop}["']`, 'i'),
+    ]
+    for (const re of patterns) { const m = html.match(re); if (m?.[1]) return decodeEntities(m[1]) }
+    return ''
+  }
+  const title = og('title')
+  const description = og('description')
+  const image = og('image')
+  return { title, description, image, status: title || description ? 'success' : 'blocked' }
 }

@@ -46,3 +46,34 @@ describe('slugify', () => {
     expect(slugify('')).toBe('item')
   })
 })
+
+import { fetchOpenGraph } from '../src/sources/capture.js'
+
+const fakeFetch = (body: { ok?: boolean; html?: string; throws?: boolean }): typeof fetch =>
+  (async () => {
+    if (body.throws) throw new Error('network down')
+    return { ok: body.ok ?? true, text: async () => body.html ?? '' } as Response
+  }) as unknown as typeof fetch
+
+describe('fetchOpenGraph', () => {
+  it('returns success when og tags are present', async () => {
+    const html = '<meta property="og:title" content="Hook"><meta property="og:description" content="About building &amp; shipping">'
+    const r = await fetchOpenGraph('https://x.test/a', fakeFetch({ html }))
+    expect(r.status).toBe('success')
+    expect(r.title).toBe('Hook')
+    expect(r.description).toBe('About building & shipping')
+  })
+  it('returns blocked on a 200 with no og tags (challenge page)', async () => {
+    const r = await fetchOpenGraph('https://x.test/a', fakeFetch({ html: '<html><body>login</body></html>' }))
+    expect(r.status).toBe('blocked')
+    expect(r.description).toBe('')
+  })
+  it('returns failed and never throws on a network error', async () => {
+    const r = await fetchOpenGraph('https://x.test/a', fakeFetch({ throws: true }))
+    expect(r.status).toBe('failed')
+  })
+  it('returns failed on a non-ok response', async () => {
+    const r = await fetchOpenGraph('https://x.test/a', fakeFetch({ ok: false }))
+    expect(r.status).toBe('failed')
+  })
+})
