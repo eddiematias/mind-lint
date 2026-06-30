@@ -5,6 +5,13 @@ const DEFAULTS = {
   // rules/ and context/ are intentionally excluded: they are already always-loaded
   // every session, so indexing them would make recall return chunks the caller
   // already has in context. journal/ stays in for episodic recall.
+  //
+  // sources/ (Corpus 2: ingested third-party material) and raw/ are intentionally NOT
+  // listed. scopeGlobs is the allowlist for the autonomous readers (indexer.ts +
+  // dream-cycle.ts), so omitting a dir firewalls it from personal recall, fact
+  // extraction, and edge derivation. Do NOT add sources/ here: corpus-aware indexing of
+  // Corpus 2 is a separate future brick. (supersession.ts also uses hardcoded
+  // memory/facts/*.md globs that bypass scopeGlobs, but they can never match sources/.)
   scopeGlobs: [
     'memory/**/*.md', 'wiki/**/*.md',
     'features/**/*.md', 'content/**/*.md', 'journal/**/*.md',

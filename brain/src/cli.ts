@@ -17,6 +17,7 @@ import { gitCommitAndPush } from './git.js'
 import fg from 'fast-glob'
 import { parseFactsFile, type Fact } from './facts/markdown.js'
 import { staleFacts, parseStaleArgs } from './facts/freshness.js'
+import { captureSource, parseCaptureArgs } from './sources/capture.js'
 
 // brain/ is symlinked into the vault from the public clone, so Node resolves
 // import.meta.url to the CLONE's real path, not the vault. That's fine for locating
@@ -143,6 +144,23 @@ async function main() {
     process.exit(0)
   }
 
+  if (cmd === 'sources') {
+    const sub = process.argv[3]
+    if (sub === 'capture') {
+      const parsed = parseCaptureArgs(process.argv.slice(4))
+      if (!parsed) {
+        console.error('usage: brain sources capture <url> [--why "..."] [--tags a,b]')
+        process.exit(1)
+      }
+      const now = new Date().toLocaleDateString('en-CA')
+      const res = await captureSource(parsed.url, { vaultRoot: cfg.vaultRoot, why: parsed.why, tags: parsed.tags, now })
+      console.log(`[brain] sources: ${res.created ? 'captured' : 'updated'} ${res.item.platform}${res.item.itemId ? ' ' + res.item.itemId : ''} og=${res.item.ogFetchStatus} -> ${res.path}`)
+      process.exit(0)
+    }
+    console.error('usage: brain sources <capture>')
+    process.exit(1)
+  }
+
   if (cmd === 'facts') {
     const sub = process.argv[3]
     if (sub === 'stale') {
@@ -166,7 +184,7 @@ async function main() {
     process.exit(1)
   }
 
-  console.error('usage: brain <reindex|serve|dream|facts>')
+  console.error('usage: brain <reindex|serve|dream|sources|facts>')
   process.exit(1)
 }
 

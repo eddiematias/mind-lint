@@ -48,3 +48,15 @@ affiliations:
 <!-- Rolling 60-day window. Refreshed by /people-sync. The only section
      /people-sync writes freely (still per-candidate approval). -->
 <!-- END recent-threads -->
+
+## Observed
+
+<!-- Durable, cited facts about this person, agent-written via /people-sync (per-candidate approval).
+     Append-only. Each entry: a discrete checkable fact + [Source: <handle/note> | YYYY-MM-DD] + a
+     label (self-described | observed). NEVER characterization: never a claim about how they feel,
+     how they tend to behave, or why they do things, and no instance count makes that OK (that is
+     Snapshot / How I show up / How they show up, which stay 100% human-authored). Test each
+     candidate first: "would this belong in How they show up?" If yes, it goes to chat, not here.
+     There is no "inferred" label: the only two labels are self-described and observed. The only
+     facts you may infer at all are a birthday/anniversary date or a city; record each as observed
+     and cite the messages it was inferred from. -->
