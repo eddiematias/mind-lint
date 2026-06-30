@@ -154,6 +154,9 @@ export async function captureSource(rawUrl: string, opts: CaptureOpts): Promise<
         url, platform,
         type: existing.item.type ?? type,
         itemId: itemId ?? existing.item.itemId,
+        // ogFetchStatus reflects THIS run's fetch (a failed re-fetch downgrades it). That is
+        // intentional: the ratcheted caption above is preserved regardless, and downstream
+        // bricks gate on status/type, not og_fetch_status.
         ogFetchStatus: og.status,
         // PR-3: caption is a one-way ratchet (set once, never overwritten on re-capture) so a
         // later manual caption edit is never clobbered. A re-fetch does NOT refresh the caption.
