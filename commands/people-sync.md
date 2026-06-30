@@ -1,6 +1,6 @@
 # /people-sync — Sync iMessage Threads into a Person's Profile
 
-Refresh `## Recent threads` and propose `## History` candidates for the profile at `wiki/people/<Name>.md`. Honors the human-authored-relational-sections principle: NEVER writes `## Snapshot`, `## How I show up`, or `## How they show up`.
+Refresh `## Recent threads`, propose `## Observed` cited facts, and propose `## History` candidates for the profile at `wiki/people/<Name>.md`. Honors the agent-doesn't-characterize principle: the agent writes only **discrete cited facts**, NEVER characterization. It NEVER writes `## Snapshot`, `## How I show up`, or `## How they show up`.
 
 ## Argument
 
@@ -33,7 +33,11 @@ Read the txt file(s) in `raw/imessage/<sanitized-handle>/`. Filter to messages w
 
 ## Step 4 — Surface candidates
 
-Two kinds of candidates:
+Three kinds of candidates. Before generating any of them, apply the **primary filter (load-bearing)** to every potential item:
+
+> "Would this belong in `## How they show up`?" If yes, it is **characterization**: surface it in chat as an observation, NEVER as a write candidate. This catches behavioral patterns ("initiates most threads"), emotional-state patterns ("mentioned work stress 3 times"), motivations, and character claims, **regardless of how many messages support them**. No instance count converts a pattern into a fact.
+
+Then route each surviving item by this order: (1) a human-milestone-worthy life event -> History candidate; (2) a stable, discrete, stated fact -> Observed candidate; (3) else -> Recent threads. If a fact is already in `## History`, do not also propose it for `## Observed`.
 
 ### Recent threads candidates
 
@@ -64,6 +68,24 @@ Format per candidate:
 - YYYY-MM-DD: <event description>
 ```
 
+### Observed candidates (durable cited facts)
+
+Discrete, checkable facts that persist beyond the rolling window: a role/job, a city, a named commitment (e.g. "running the Oct half-marathon"), a preference the person STATED (not one you infer from behavior). Each must pass the primary filter above (no characterization). Be conservative; most facts are Recent-threads material, not durable Observed facts.
+
+**Labels (only two, no others):** `self-described` (the person stated it) or `observed` (a discrete event visible in the export). There is NO `inferred` label. The only facts you may infer at all are a birthday/anniversary date or a city; record each as `observed` and cite the messages it was inferred from. Nothing else may be inferred into `## Observed`.
+
+**Dedup:** before surfacing a candidate, check the profile's existing `## Observed` for an entry with the same citation (handle + date) or the same fact; if present, skip it silently (do not re-prompt). This keeps overlapping windows from re-surfacing already-approved facts.
+
+Format per candidate:
+```
+**Fact:** <discrete checkable fact, agent prose>
+**Label:** <self-described | observed>
+**Quote:**
+  > "<verbatim quote that supports the fact>" (<speaker>)
+**Proposed line for ## Observed:**
+- <fact> [Source: <handle> | YYYY-MM-DD] (<label>)
+```
+
 ## Disposition options per candidate
 
 For each candidate, ask the user one of:
@@ -78,6 +100,7 @@ For each candidate, ask the user one of:
 - **History entries are dated.** Format: `- YYYY-MM-DD: <event description>`. The user confirms the date.
 - **Recent threads is rewritten on each run, strictly between the `<!-- BEGIN recent-threads -->` and `<!-- END recent-threads -->` markers.** Rolling window, not append-only. Never write outside the markers; never delete the markers. The markers are guaranteed present on every profile (new ones from the template, the 5 live ones from the marker migration), so /people-sync can assume them, it does NOT insert markers itself.
 - **History is append-only.** New entries match the existing convention in that profile (chronological top or bottom). Read the profile to detect the pattern; ask if ambiguous.
+- **Observed is append-only and every entry is cited + labeled.** Format: `- <fact> [Source: <handle> | YYYY-MM-DD] (<label>)` where `<label>` is exactly `self-described` or `observed`. Never rewrite or delete prior entries; a run adds only new approved facts. Never write a behavioral or emotional pattern here regardless of instance count (that is characterization, route to chat). Inference is limited to a date or a city, each citing its basis.
 - **Always show the proposed diff** before writing.
 - **Update `last-synced-imessage`** in frontmatter to today's date after the run.
 - **Update `wiki/people/_index.md`** for this person. The roster is 7 columns:
@@ -88,6 +111,8 @@ For each candidate, ask the user one of:
   reorder them. (Relationship/Category come from the profile frontmatter, not from this sync.)
 
 ## What this command does NOT do
+
+This command WRITES exactly three sections (all per-candidate approval): `## Recent threads` (rolling rewrite between its markers), `## Observed` (append-only cited facts), and `## History` (dated milestone nominations). It does NOT write anything else. In particular:
 
 - Does NOT write to `## Snapshot`, `## How I show up`, or `## How they show up`. These are 100% human-authored. If the agent surfaces an observation that would belong in one of these sections (e.g. "she initiates more often than I do"), surface it in chat as an observation, not as a write candidate.
 - Does NOT modify any file other than `wiki/people/<Name>.md` and `wiki/people/_index.md` (last-synced timestamp).
@@ -116,4 +141,5 @@ Don't run daily. The export is heavy and the signal-to-noise drops at short wind
 - `git status` shows changes only in `wiki/people/<Name>.md` and `wiki/people/_index.md`.
 - No iMessage content in any tracked file outside the target profile (`git diff` audit).
 - `## Snapshot`, `## How I show up`, `## How they show up` are byte-identical to before the run.
+- Every new `## Observed` line is cited (`[Source: ... | YYYY-MM-DD]`) and labeled (`self-described` | `observed`), states a discrete fact, and contains no behavioral/emotional pattern or characterization.
 - `last-synced-imessage` frontmatter equals today's date.
