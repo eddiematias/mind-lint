@@ -62,6 +62,8 @@ describe('staleFacts', () => {
     expect(rows[0].claim).toBe('old event')
     expect(rows[0].confidence).toBe(0.9) // carries the unchanged confidence
     expect(rows[0].freshness).toBeLessThan(0.25)
+    expect(rows[0].sourcePath).toBe('memory/learnings/x.md') // sourcePath threads through to the row
+    expect(rows[0].ageDays).toBe(181) // 2026-01-01 to 2026-07-01 (non-leap year)
   })
   it('boundary is exclusive: a fact at exactly the threshold is not listed', () => {
     // event hl=7, asOf is exactly one halflife after validFrom => freshness exactly 0.5.
