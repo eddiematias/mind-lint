@@ -18,7 +18,7 @@ Export chats from Claude.ai first:
 5. For each selected file:
    a. If JSON format: parse the conversation structure, extract human/assistant message pairs
    b. If markdown format: read as-is
-   c. If the conversation is very long, process in chunks
+   c. If the conversation is very long, process in chunks (for a very large export, prefer the Heavy-input offload section below instead)
 
 6. Extract the same categories as /mine-sessions:
 
@@ -55,4 +55,4 @@ Claude.ai full exports contain JSON files with this structure:
 
 ## Heavy-input offload (optional)
 
-For a very large export (a multi-month chat of thousands of lines, or a full-export ZIP with many conversations), dispatch a subagent to read-and-extract one conversation (or one file) at a time and return ONLY the structured candidates (learnings, decisions, corrections, preferences, content ideas, with quote anchors), not the raw conversation. The lead keeps everything that needs a gate or the whole picture: the privacy scan above, dedup against the existing indexes, and the per-category user confirmation before any write. For small exports, read inline. (Native subagents are our equivalent of gbrain's worker queue, which is Postgres-only infra we do not run, so there is no mode flag here: just offload heavy reads and keep the gating in the lead.)
+For a very large export (a multi-month chat of thousands of lines, or a full-export ZIP with many conversations), dispatch a subagent to read-and-extract one source per subagent (one conversation, or one file) and return ONLY the structured candidates (learnings, decisions, corrections, preferences, content ideas, with quote anchors), not the raw conversation. The lead keeps everything that needs a gate or the whole picture: the privacy scan above, dedup against the existing indexes, and the per-category user confirmation before any write. For small exports, read inline. (Native subagents are our equivalent of gbrain's worker queue, which is Postgres-only infra we do not run, so there is no mode flag here: just offload heavy reads and keep the gating in the lead.)
