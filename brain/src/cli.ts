@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises'
-import { resolve, dirname } from 'node:path'
+import { resolve, dirname, basename } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { loadConfig, requireVaultRoot, serveAuthError } from './config.js'
 import type { BrainConfig } from './types.js'
@@ -14,6 +14,9 @@ import { pullVault, startReindexLoop } from './reindex-loop.js'
 import { runFactsCycle } from './dream-cycle.js'
 import { restampValidFrom, applyConfirmedSupersessions, runSupersessionProbe } from './facts/supersession.js'
 import { gitCommitAndPush } from './git.js'
+import fg from 'fast-glob'
+import { parseFactsFile, type Fact } from './facts/markdown.js'
+import { staleFacts, parseStaleArgs } from './facts/freshness.js'
 import { captureSource, parseCaptureArgs } from './sources/capture.js'
 
 // brain/ is symlinked into the vault from the public clone, so Node resolves
@@ -158,7 +161,30 @@ async function main() {
     process.exit(1)
   }
 
-  console.error('usage: brain <reindex|serve|dream|sources>')
+  if (cmd === 'facts') {
+    const sub = process.argv[3]
+    if (sub === 'stale') {
+      const args = parseStaleArgs(process.argv.slice(4))
+      const below = args.below ?? 0.25
+      const asOf = args.asof ?? new Date().toLocaleDateString('en-CA')
+      const files = await fg('memory/facts/*.md', { cwd: cfg.vaultRoot, dot: true })
+      const facts: Fact[] = []
+      for (const rel of files) {
+        if (basename(rel).startsWith('_supersession')) continue // skip ledger files
+        try { facts.push(...parseFactsFile(await readFile(resolve(cfg.vaultRoot, rel), 'utf8'))) } catch { /* skip unparseable */ }
+      }
+      const rows = staleFacts(facts, asOf, below)
+      for (const r of rows) {
+        console.log(`${r.freshness.toFixed(2)}  age=${r.ageDays}d  conf=${r.confidence.toFixed(2)}  ${r.kind}  ${r.sourcePath}  ${r.claim}`)
+      }
+      console.log(`[brain] ${rows.length} fact(s) below freshness ${below} as of ${asOf} (review for relevance; retire via the forget/supersede flow)`)
+      process.exit(0)
+    }
+    console.error('usage: brain facts <stale>')
+    process.exit(1)
+  }
+
+  console.error('usage: brain <reindex|serve|dream|sources|facts>')
   process.exit(1)
 }
 
