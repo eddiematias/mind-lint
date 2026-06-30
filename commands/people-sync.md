@@ -72,7 +72,7 @@ Format per candidate:
 
 Discrete, checkable facts that persist beyond the rolling window: a role/job, a city, a named commitment (e.g. "running the Oct half-marathon"), a preference the person STATED (not one you infer from behavior). Each must pass the primary filter above (no characterization). Be conservative; most facts are Recent-threads material, not durable Observed facts.
 
-**Labels (only these):** `self-described` (the person stated it) or `observed` (a discrete event visible in the export). The ONLY allowed inferences are a birthday/anniversary date or a city, each citing its basis; nothing else may be inferred into `## Observed`.
+**Labels (only two, no others):** `self-described` (the person stated it) or `observed` (a discrete event visible in the export). There is NO `inferred` label. The only facts you may infer at all are a birthday/anniversary date or a city; record each as `observed` and cite the messages it was inferred from. Nothing else may be inferred into `## Observed`.
 
 **Dedup:** before surfacing a candidate, check the profile's existing `## Observed` for an entry with the same citation (handle + date) or the same fact; if present, skip it silently (do not re-prompt). This keeps overlapping windows from re-surfacing already-approved facts.
 
@@ -100,7 +100,7 @@ For each candidate, ask the user one of:
 - **History entries are dated.** Format: `- YYYY-MM-DD: <event description>`. The user confirms the date.
 - **Recent threads is rewritten on each run, strictly between the `<!-- BEGIN recent-threads -->` and `<!-- END recent-threads -->` markers.** Rolling window, not append-only. Never write outside the markers; never delete the markers. The markers are guaranteed present on every profile (new ones from the template, the 5 live ones from the marker migration), so /people-sync can assume them, it does NOT insert markers itself.
 - **History is append-only.** New entries match the existing convention in that profile (chronological top or bottom). Read the profile to detect the pattern; ask if ambiguous.
-- **Observed is append-only and every entry is cited + labeled.** Format: `- <fact> [Source: <handle> | YYYY-MM-DD] (<self-described | observed>)`. Never rewrite or delete prior entries; a run adds only new approved facts. Never write a behavioral or emotional pattern here regardless of instance count (that is characterization, route to chat). Inference is limited to a date or a city, each citing its basis.
+- **Observed is append-only and every entry is cited + labeled.** Format: `- <fact> [Source: <handle> | YYYY-MM-DD] (<label>)` where `<label>` is exactly `self-described` or `observed`. Never rewrite or delete prior entries; a run adds only new approved facts. Never write a behavioral or emotional pattern here regardless of instance count (that is characterization, route to chat). Inference is limited to a date or a city, each citing its basis.
 - **Always show the proposed diff** before writing.
 - **Update `last-synced-imessage`** in frontmatter to today's date after the run.
 - **Update `wiki/people/_index.md`** for this person. The roster is 7 columns:

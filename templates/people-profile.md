@@ -57,4 +57,6 @@ affiliations:
      how they tend to behave, or why they do things, and no instance count makes that OK (that is
      Snapshot / How I show up / How they show up, which stay 100% human-authored). Test each
      candidate first: "would this belong in How they show up?" If yes, it goes to chat, not here.
-     The only inferences allowed are a birthday/anniversary date or a city, each citing its basis. -->
+     There is no "inferred" label: the only two labels are self-described and observed. The only
+     facts you may infer at all are a birthday/anniversary date or a city; record each as observed
+     and cite the messages it was inferred from. -->
