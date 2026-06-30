@@ -60,3 +60,7 @@ Before writing extracted content to any Mind-Lint file:
 - Be selective. Not every message is worth logging. Focus on durable, cross-project knowledge.
 - Skip purely mechanical exchanges (routine file edits, build commands, debugging loops with no insight)
 - When in doubt, extract it and let the user decide during the confirmation step
+
+## Heavy-input offload (optional)
+
+For a very large transcript (a multi-thousand-line `.jsonl`), dispatch a subagent to do the read-and-extract for that single session and return ONLY the structured candidates it found (learnings, decisions, corrections, preferences, content ideas, each with its quote anchors), not the raw transcript. Process one session per subagent. The lead stays responsible for everything that needs the whole picture or a gate: the privacy scan above, dedup against the existing indexes, and the per-category user confirmation before any write. For small sessions, read inline. (Native subagents are our equivalent of gbrain's worker queue, which is Postgres-only infra we do not run, so there is no mode flag here: just offload a heavy read and keep the gating in the lead.)
