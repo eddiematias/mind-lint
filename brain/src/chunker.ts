@@ -8,7 +8,7 @@ import type { Chunk } from './types.js'
 // auto-invalidates every file's cache entry — the Phase-2 deploy bug (a new chunker
 // that re-serializes identical source was silently skipped) cannot recur.
 // v1 = original body-only chunker; v2 = Phase-2 entity-frontmatter serialization.
-export const CHUNKER_VERSION = '2'
+export const CHUNKER_VERSION = '3'
 
 export interface ParsedAffiliation {
   target: string         // raw "[[Name]]" verbatim
@@ -31,7 +31,11 @@ function sha(s: string): string {
   return createHash('sha256').update(s).digest('hex').slice(0, 16)
 }
 
-// split body into sections at lines starting with # or ##.
+// split body into sections at lines starting with #, ##, or ### (H1-H3).
+// H3 splitting is load-bearing for learnings: they live as `### [date] Title` entries
+// inside a category file (one H1, no H2s), so without H3 splitting a whole category file
+// collapses into one section that splitLong then slices blindly across unrelated entries.
+// Splitting on H3 makes each learning (and each wiki/decision H3 sub-section) its own chunk.
 // A fence guard prevents splitting on `#` comment lines inside fenced code blocks
 // (bash/python/etc.), which this vault has many of. charCodeAt(96) is a backtick;
 // we test by char code so this code stays embeddable in markdown without literal
@@ -47,7 +51,7 @@ function splitSections(body: string): string[] {
   }
   for (const line of lines) {
     if (isFence(line)) inFence = !inFence
-    if (!inFence && /^#{1,2}\s/.test(line) && current.some((l) => l.trim() !== '')) {
+    if (!inFence && /^#{1,3}\s/.test(line) && current.some((l) => l.trim() !== '')) {
       sections.push(current.join('\n').trim())
       current = []
     }

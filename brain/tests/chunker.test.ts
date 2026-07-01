@@ -35,6 +35,30 @@ describe('chunkMarkdown', () => {
     expect(chunks[1].content).toContain('More text here.')
   })
 
+  it('splits on H3 (###) so per-entry sections like learnings become separate chunks', () => {
+    // learnings live as `### [date] Title` entries inside a category file (one H1, no H2s).
+    // Splitting on H3 makes each learning its own retrieval unit instead of a blind
+    // 2000-char slice that straddles unrelated entries.
+    const learnings = [
+      '# Backend Learnings',
+      '',
+      'APIs and server-side patterns.',
+      '',
+      '### [2026-01-01] First insight',
+      'Body of the first learning.',
+      '',
+      '### [2026-01-02] Second insight',
+      'Body of the second learning.',
+    ].join('\n')
+    const chunks = chunkMarkdown('memory/learnings/backend.md', learnings, 2000)
+    const first = chunks.find((c) => c.content.includes('First insight'))
+    const second = chunks.find((c) => c.content.includes('Second insight'))
+    expect(first).toBeDefined()
+    expect(second).toBeDefined()
+    expect(first).not.toBe(second) // the two learnings land in different chunks
+    expect(first!.content).not.toContain('Second insight')
+  })
+
   it('splits an over-long section into multiple chunks', () => {
     const long = `## Big\n${'x '.repeat(3000)}`
     const chunks = chunkMarkdown('memory/y.md', long, 1000)
