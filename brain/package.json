@@ -13,6 +13,7 @@
     "reindex": "tsx src/cli.ts reindex",
     "serve": "tsx src/cli.ts serve",
     "dream": "tsx src/cli.ts dream",
+    "eval": "tsx src/cli.ts eval",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
