@@ -18,6 +18,8 @@ import fg from 'fast-glob'
 import { parseFactsFile, type Fact } from './facts/markdown.js'
 import { staleFacts, parseStaleArgs } from './facts/freshness.js'
 import { captureSource, parseCaptureArgs } from './sources/capture.js'
+import { loadGoldSet } from './eval/gold.js'
+import { runEval, parseEvalArgs, formatReport } from './eval/run.js'
 
 // brain/ is symlinked into the vault from the public clone, so Node resolves
 // import.meta.url to the CLONE's real path, not the vault. That's fine for locating
@@ -184,7 +186,21 @@ async function main() {
     process.exit(1)
   }
 
-  console.error('usage: brain <reindex|serve|dream|sources|facts>')
+  if (cmd === 'eval') {
+    const args = parseEvalArgs(process.argv.slice(3))
+    const goldPath = args.gold ? resolve(args.gold) : resolve(brainDir(), 'evals/gold-retrieval.jsonl')
+    const k = args.k ?? 8
+    const floor = args.floor ?? (process.env.BRAIN_EVAL_RECALL_FLOOR ? Number(process.env.BRAIN_EVAL_RECALL_FLOOR) : 0.85)
+    const db = await openDb(resolve(brainDir(), cfg.dbPath))
+    await initSchema(db, cfg.embedder.dimensions)
+    const reranker = makeReranker(cfg.reranker)
+    const gold = await loadGoldSet(goldPath)
+    const result = await runEval({ db, embedder, reranker, gold, k, floor, rerankerLabel: cfg.reranker.enabled ? cfg.reranker.model : 'noop' })
+    console.log(formatReport(result))
+    process.exit(result.pass ? 0 : 1)
+  }
+
+  console.error('usage: brain <reindex|serve|dream|sources|facts|eval>')
   process.exit(1)
 }
 
