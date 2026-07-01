@@ -20,6 +20,7 @@ import { staleFacts, parseStaleArgs } from './facts/freshness.js'
 import { captureSource, parseCaptureArgs } from './sources/capture.js'
 import { loadGoldSet } from './eval/gold.js'
 import { runEval, runCompare, parseEvalArgs, formatReport, formatCompareReport } from './eval/run.js'
+import { runLabelEdges } from './eval/label.js'
 import { DEFAULT_GRAPH_ARM } from './graph-arm.js'
 
 // brain/ is symlinked into the vault from the public clone, so Node resolves
@@ -188,6 +189,7 @@ async function main() {
   }
 
   if (cmd === 'eval') {
+    const sub = process.argv[3]
     const args = parseEvalArgs(process.argv.slice(3))
     const goldPath = args.gold ? resolve(args.gold) : resolve(brainDir(), 'evals/gold-retrieval.jsonl')
     const k = args.k ?? 8
@@ -197,6 +199,10 @@ async function main() {
     const reranker = makeReranker(cfg.reranker)
     const gold = await loadGoldSet(goldPath)
     const rerankerLabel = cfg.reranker.enabled ? cfg.reranker.model : 'noop'
+    if (sub === 'label-edges') {
+      await runLabelEdges({ db, embedder, reranker, gold, k })
+      process.exit(0)
+    }
     if (args.compareGraphArm) {
       const result = await runCompare({ db, embedder, reranker, gold, k, rerankerLabel, graphArm: { ...DEFAULT_GRAPH_ARM, ...cfg.retrieval?.graphArm, enabled: true } })
       console.log(formatCompareReport(result))
