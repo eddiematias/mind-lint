@@ -29,6 +29,19 @@ export interface BrainConfig {
       maxPairsPerRun: number // hard cap on LLM judge calls per night (logged if hit)
     }
   }
+  // retrieval.graphArm: relational-fanout arm for retrieve(). Absent/disabled: retrieve() is
+  // bit-identical to the pre-graph baseline (two-list RRF only). Enabled: seeds a graph walk
+  // from the top retrieved docs and fuses a third RRF list. Disabled by default (spec R-4).
+  retrieval?: {
+    graphArm?: {
+      enabled: boolean
+      maxSeeds: number
+      maxDocs: number
+      roles: string[]
+      maxHops: number
+      direction: 'out' | 'in' | 'both'
+    }
+  }
 }
 
 export interface Chunk {

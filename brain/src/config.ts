@@ -1,4 +1,5 @@
 import type { BrainConfig } from './types.js'
+import { DEFAULT_GRAPH_ARM } from './graph-arm.js'
 
 const DEFAULTS = {
   dbPath: 'data/brain.pglite',
@@ -48,6 +49,9 @@ export function loadConfig(raw: Partial<BrainConfig>, vaultRoot: string): BrainC
     dreamCycle: {
       facts: { ...DEFAULTS.dreamCycle.facts, ...(raw.dreamCycle?.facts ?? {}) },
       supersession: { ...DEFAULTS.dreamCycle.supersession, ...(raw.dreamCycle?.supersession ?? {}) },
+    },
+    retrieval: {
+      graphArm: { ...DEFAULT_GRAPH_ARM, ...(raw.retrieval?.graphArm ?? {}) },
     },
   }
 }

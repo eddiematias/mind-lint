@@ -2,6 +2,7 @@ import type { RetrievedChunk } from '../types.js'
 import type { GoldEntry } from './gold.js'
 import { recallAtK, mrr, hitAtK } from './metrics.js'
 import { retrieve, CANDIDATE_N } from '../retriever.js'
+import { type GraphArmConfig, DEFAULT_GRAPH_ARM } from '../graph-arm.js'
 
 // Ranked distinct sourcePaths, best (earliest) rank preserved.
 export function dedupeToDocs(chunks: Pick<RetrievedChunk, 'sourcePath'>[]): string[] {
@@ -45,24 +46,31 @@ export function aggregateByClass(results: QueryResult[]): { trimCandidate: Class
   }
 }
 
-// argv is process.argv.slice(3) for `brain eval [--gold <p>] [--k N] [--floor F]`.
+// argv is process.argv.slice(3) for `brain eval [--gold <p>] [--k N] [--floor F] [--compare-graph-arm]`.
 // (No --baseline in v1: a stable-class regression-vs-baseline check is a Phase-4-time feature; do
 // not parse a flag the runner does not consume.)
-export function parseEvalArgs(argv: string[]): { gold?: string; k?: number; floor?: number } {
+export function parseEvalArgs(argv: string[]): { gold?: string; k?: number; floor?: number; compareGraphArm?: boolean } {
   const flagVal = (f: string): string | undefined => { const i = argv.indexOf(f); return i >= 0 ? argv[i + 1] : undefined }
   const num = (v: string | undefined): number | undefined => {
     if (v === undefined) return undefined
     const n = Number(v)
     return Number.isNaN(n) ? undefined : n
   }
-  return { gold: flagVal('--gold'), k: num(flagVal('--k')), floor: num(flagVal('--floor')) }
+  return { gold: flagVal('--gold'), k: num(flagVal('--k')), floor: num(flagVal('--floor')), compareGraphArm: argv.includes('--compare-graph-arm') }
+}
+
+// Pure delta classifier: compares arm-off vs arm-on hit state for one gold entry.
+export function classifyDelta(off: QueryResult, on: QueryResult): 'rescued' | 'broken' | 'unchanged' {
+  if (!off.hit && on.hit) return 'rescued'
+  if (off.hit && !on.hit) return 'broken'
+  return 'unchanged'
 }
 
 // retrieve()'s parameter types, borrowed so we do not re-name Embedder/Reranker here.
 type RetrieveParams = Parameters<typeof retrieve>
 
 export interface EvalResult {
-  env: { embedder: string; reranker: string }
+  env: { embedder: string; reranker: string; graphArm: 'on' | 'off' }
   perQuery: QueryResult[]
   byClass: { trimCandidate: ClassAgg; stable: ClassAgg }
   k: number
@@ -83,10 +91,11 @@ export async function runEval(deps: {
   k: number
   floor: number
   rerankerLabel: string
+  graphArm?: GraphArmConfig
 }): Promise<EvalResult> {
   const perQuery: QueryResult[] = []
   for (const entry of deps.gold) {
-    const chunks = await retrieve(deps.db, deps.embedder, deps.reranker, entry.query, CANDIDATE_N)
+    const chunks = await retrieve(deps.db, deps.embedder, deps.reranker, entry.query, CANDIDATE_N, { graphArm: deps.graphArm })
     perQuery.push(scoreEntry(entry, dedupeToDocs(chunks), deps.k))
   }
   const byClass = aggregateByClass(perQuery)
@@ -96,7 +105,7 @@ export async function runEval(deps: {
   const gatedClass: 'trim-candidate' | 'stable' = byClass.trimCandidate.count > 0 ? 'trim-candidate' : 'stable'
   const gate = gatedClass === 'trim-candidate' ? byClass.trimCandidate : byClass.stable
   return {
-    env: { embedder: deps.embedder.id, reranker: deps.rerankerLabel },
+    env: { embedder: deps.embedder.id, reranker: deps.rerankerLabel, graphArm: deps.graphArm?.enabled ? 'on' : 'off' },
     perQuery, byClass, k: deps.k, floor: deps.floor, gatedClass,
     pass: gate.recall >= deps.floor,
   }
@@ -105,7 +114,7 @@ export async function runEval(deps: {
 export function formatReport(r: EvalResult): string {
   const pct = (n: number) => n.toFixed(2)
   const lines: string[] = []
-  lines.push(`[eval] env: embedder=${r.env.embedder} reranker=${r.env.reranker} k=${r.k} floor=${pct(r.floor)}`)
+  lines.push(`[eval] env: embedder=${r.env.embedder} reranker=${r.env.reranker} graphArm=${r.env.graphArm} k=${r.k} floor=${pct(r.floor)}`)
   lines.push(`[eval] (before/after comparisons are valid only within the same env above)`)
   for (const q of r.perQuery) {
     const cls = q.trimCandidate ? 'trim-candidate' : 'stable'
@@ -119,5 +128,120 @@ export function formatReport(r: EvalResult): string {
     ? ' (BASELINE ONLY: no trimCandidate entries, so this is NOT a trim-safety gate; add a trimCandidate entry per Phase-4-move file before trusting a trim)'
     : ''
   lines.push(`[eval] ${r.pass ? 'PASS' : 'FAIL'} (gated on ${r.gatedClass} recall >= ${pct(r.floor)})${baselineNote}`)
+  return lines.join('\n')
+}
+
+// Per-class aggregates for both arms of the comparison.
+export interface CompareClassAgg {
+  count: number
+  recallOff: number
+  recallOn: number
+  mrrOff: number
+  mrrOn: number
+  hitRateOff: number
+  hitRateOn: number
+}
+
+export interface CompareResult {
+  env: { embedder: string; reranker: string; graphArm: 'on-vs-off' }
+  rescued: string[]
+  broken: string[]
+  edgeReachableRescues: number
+  byClass: { trimCandidate: CompareClassAgg; stable: CompareClassAgg }
+  k: number
+}
+
+// Runs the REAL retrieval arm-off then arm-on for every gold entry, then classifies each delta.
+// Reads edgeReachable from the GOLD ENTRY via goldMap, NOT from QueryResult (which has no such field).
+// non-hermetic: needs the live index + Ollama.
+export async function runCompare(deps: {
+  db: RetrieveParams[0]
+  embedder: RetrieveParams[1]
+  reranker: RetrieveParams[2]
+  gold: GoldEntry[]
+  k: number
+  rerankerLabel: string
+  graphArm: GraphArmConfig
+}): Promise<CompareResult> {
+  const goldMap = new Map(deps.gold.map((e) => [e.id, e]))
+  const armOff: GraphArmConfig = { ...DEFAULT_GRAPH_ARM, ...deps.graphArm, enabled: false }
+  const armOn: GraphArmConfig = { ...deps.graphArm, enabled: true }
+
+  const rescued: string[] = []
+  const broken: string[] = []
+
+  type PairEntry = { entry: GoldEntry; off: QueryResult; on: QueryResult }
+  const pairs: PairEntry[] = []
+
+  for (const entry of deps.gold) {
+    const [chunksOff, chunksOn] = await Promise.all([
+      retrieve(deps.db, deps.embedder, deps.reranker, entry.query, CANDIDATE_N, { graphArm: armOff }),
+      retrieve(deps.db, deps.embedder, deps.reranker, entry.query, CANDIDATE_N, { graphArm: armOn }),
+    ])
+    const off = scoreEntry(entry, dedupeToDocs(chunksOff), deps.k)
+    const on = scoreEntry(entry, dedupeToDocs(chunksOn), deps.k)
+    const delta = classifyDelta(off, on)
+    if (delta === 'rescued') rescued.push(entry.id)
+    if (delta === 'broken') broken.push(entry.id)
+    pairs.push({ entry, off, on })
+  }
+
+  // edgeReachable comes from the GOLD ENTRY (via goldMap), not from QueryResult.
+  const edgeReachableRescues = rescued.filter((id) => goldMap.get(id)?.edgeReachable).length
+
+  const compAgg = (rs: PairEntry[]): CompareClassAgg => {
+    const n = rs.length
+    if (n === 0) return { count: 0, recallOff: 0, recallOn: 0, mrrOff: 0, mrrOn: 0, hitRateOff: 0, hitRateOn: 0 }
+    return {
+      count: n,
+      recallOff: rs.reduce((s, r) => s + r.off.recall, 0) / n,
+      recallOn: rs.reduce((s, r) => s + r.on.recall, 0) / n,
+      mrrOff: rs.reduce((s, r) => s + r.off.mrr, 0) / n,
+      mrrOn: rs.reduce((s, r) => s + r.on.mrr, 0) / n,
+      hitRateOff: rs.filter((r) => r.off.hit).length / n,
+      hitRateOn: rs.filter((r) => r.on.hit).length / n,
+    }
+  }
+
+  return {
+    env: { embedder: deps.embedder.id, reranker: deps.rerankerLabel, graphArm: 'on-vs-off' },
+    rescued,
+    broken,
+    edgeReachableRescues,
+    byClass: {
+      trimCandidate: compAgg(pairs.filter((p) => p.entry.trimCandidate)),
+      stable: compAgg(pairs.filter((p) => !p.entry.trimCandidate)),
+    },
+    k: deps.k,
+  }
+}
+
+export function formatCompareReport(r: CompareResult): string {
+  const pct = (n: number) => n.toFixed(2)
+  const lines: string[] = []
+  lines.push(`[eval:compare] env: embedder=${r.env.embedder} reranker=${r.env.reranker} graphArm=${r.env.graphArm} k=${r.k}`)
+
+  const cl = (name: string, a: CompareClassAgg) => [
+    `[eval:compare] ${name}: n=${a.count}`,
+    `  recall@${r.k}  off=${pct(a.recallOff)} on=${pct(a.recallOn)} delta=${pct(a.recallOn - a.recallOff)}`,
+    `  mrr        off=${pct(a.mrrOff)} on=${pct(a.mrrOn)} delta=${pct(a.mrrOn - a.mrrOff)}`,
+    `  hit@${r.k}    off=${pct(a.hitRateOff)} on=${pct(a.hitRateOn)}`,
+  ]
+  lines.push(...cl('trim-candidate', r.byClass.trimCandidate))
+  lines.push(...cl('stable', r.byClass.stable))
+
+  lines.push(`[eval:compare] rescued (${r.rescued.length}): ${r.rescued.length ? r.rescued.join(', ') : 'none'}`)
+  lines.push(`[eval:compare] broken  (${r.broken.length}): ${r.broken.length ? r.broken.join(', ') : 'none'}`)
+  lines.push(`[eval:compare] edge-reachable rescues: ${r.edgeReachableRescues} of ${r.rescued.length}`)
+
+  let verdict: string
+  if (r.broken.length > 0) {
+    verdict = `HOLD-DISABLED: broke ${r.broken.length} hit(s)`
+  } else if (r.edgeReachableRescues < 8) {
+    verdict = `HOLD-DISABLED: only ${r.edgeReachableRescues} edge-reachable rescue(s) (< 8), addressable population too small`
+  } else {
+    verdict = `PASS-ENABLE (0 broken, ${r.edgeReachableRescues} edge-reachable rescues >= 8)`
+  }
+  lines.push(`[eval:compare] verdict: ${verdict}`)
   return lines.join('\n')
 }

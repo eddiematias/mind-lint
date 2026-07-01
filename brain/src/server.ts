@@ -6,6 +6,7 @@ import { z } from 'zod'
 import type { PGlite } from '@electric-sql/pglite'
 import type { Embedder, Reranker } from './types.js'
 import { retrieve } from './retriever.js'
+import { type GraphArmConfig } from './graph-arm.js'
 import { traverseEdges, listDerivedEdges, listSuppressions, insertSuppression, deleteSuppression } from './db.js'
 
 const SUBTREE_RANK: Record<string, number> = { 'wiki/people/': 0, 'wiki/companies/': 1, 'wiki/projects/': 2 }
@@ -39,16 +40,16 @@ async function resolveSeed(db: PGlite, entity: string): Promise<string | null> {
 const SYNTH_HINT =
   'These are ranked evidence chunks from the vault. Synthesize a cited answer (reference sourcePath) and end with a short gap analysis of what is missing or stale.'
 
-export function buildServer(db: PGlite, embedder: Embedder, reranker: Reranker): McpServer {
+export function buildServer(db: PGlite, embedder: Embedder, reranker: Reranker, graphArmCfg?: GraphArmConfig): McpServer {
   const server = new McpServer({ name: 'mind-lint-brain', version: '0.1.0' })
 
   server.tool('search', { query: z.string(), k: z.number().optional() }, async ({ query, k }) => {
-    const hits = await retrieve(db, embedder, reranker, query, k ?? 8)
+    const hits = await retrieve(db, embedder, reranker, query, k ?? 8, { graphArm: graphArmCfg })
     return { content: [{ type: 'text', text: JSON.stringify(hits, null, 2) }] }
   })
 
   server.tool('recall', { query: z.string(), k: z.number().optional() }, async ({ query, k }) => {
-    const hits = await retrieve(db, embedder, reranker, query, k ?? 8)
+    const hits = await retrieve(db, embedder, reranker, query, k ?? 8, { graphArm: graphArmCfg })
     return { content: [{ type: 'text', text: JSON.stringify({ instruction: SYNTH_HINT, evidence: hits }, null, 2) }] }
   })
 
@@ -127,7 +128,7 @@ function bearerOk(authHeader: string | undefined, expected: string): boolean {
 // breaks the post-initialize lifecycle (notifications/initialized returns 500), which
 // a strict client (Claude Code) trips over. db/embedder/reranker are reused via
 // closure; only the thin server/transport wrapper is recreated per request.
-export function createMcpHttpServer(db: PGlite, embedder: Embedder, reranker: Reranker, opts: { authToken?: string } = {}): Server {
+export function createMcpHttpServer(db: PGlite, embedder: Embedder, reranker: Reranker, opts: { authToken?: string; graphArm?: GraphArmConfig } = {}): Server {
   return createServer(async (req, res) => {
     // App-level bearer gate (layer C), R-I1: FIRST statement, BEFORE the 405 method gate
     // and BEFORE any body read. Only enforced when a token is configured, so the default
@@ -149,7 +150,7 @@ export function createMcpHttpServer(db: PGlite, embedder: Embedder, reranker: Re
       const chunks: Buffer[] = []
       for await (const c of req) chunks.push(c as Buffer)
       const body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : undefined
-      const server = buildServer(db, embedder, reranker)
+      const server = buildServer(db, embedder, reranker, opts.graphArm)
       const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined })
       res.on('close', () => { void transport.close(); void server.close() })
       await server.connect(transport)

@@ -80,7 +80,7 @@ export async function upsertChunk(db: PGlite, c: Chunk, embedding: number[]): Pr
   )
 }
 
-interface Row { id: string; source_path: string; content: string; metadata: Record<string, unknown> }
+export interface Row { id: string; source_path: string; content: string; metadata: Record<string, unknown> }
 
 export async function vectorSearch(db: PGlite, queryVec: number[], limit: number): Promise<Row[]> {
   const res = await db.query<Row>(
@@ -322,6 +322,23 @@ export async function getChunkContents(db: PGlite, ids: string[]): Promise<Row[]
   const res = await db.query<Row>(
     `SELECT id, source_path, content, metadata FROM chunks WHERE id = ANY($1)`,
     [ids],
+  )
+  return res.rows
+}
+
+export async function bestChunkPerDoc(db: PGlite, qvec: number[], paths: string[]): Promise<Row[]> {
+  if (paths.length === 0) return []
+  const res = await db.query<Row>(
+    `SELECT id, source_path, content, metadata
+     FROM (
+       SELECT DISTINCT ON (source_path)
+              id, source_path, content, metadata, embedding <=> $2::vector AS dist
+       FROM chunks
+       WHERE source_path = ANY($1)
+       ORDER BY source_path, embedding <=> $2::vector
+     ) t
+     ORDER BY dist`,
+    [paths, toVectorLiteral(qvec)],
   )
   return res.rows
 }

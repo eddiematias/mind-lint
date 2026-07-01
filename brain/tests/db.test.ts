@@ -1,6 +1,6 @@
 // brain/tests/db.test.ts
 import { describe, it, expect, beforeEach, afterAll } from 'vitest'
-import { openDb, initSchema, upsertChunk, vectorSearch, keywordSearch, getMeta, setMeta } from '../src/db.js'
+import { openDb, initSchema, upsertChunk, vectorSearch, keywordSearch, getMeta, setMeta, bestChunkPerDoc } from '../src/db.js'
 import { existsSync, rmSync } from 'node:fs'
 import { resolve } from 'node:path'
 import type { PGlite } from '@electric-sql/pglite'
@@ -38,6 +38,25 @@ describe('db', () => {
     // upsert semantics: re-setting a key overwrites
     await setMeta(db, 'chunker_version', '3')
     expect(await getMeta(db, 'chunker_version')).toBe('3')
+  })
+})
+
+describe('bestChunkPerDoc', () => {
+  it('returns the query-closest chunk per doc, most-similar-first, [] for empty paths', async () => {
+    const db = await openDb('')
+    await initSchema(db, 3)
+    // doc a.md: two chunks. a.md#1 is [1,0,0] (exact match to query). a.md#0 is [0,1,0] (farther).
+    // doc b.md: one chunk at [0.6,0.6,0] (farther than a.md#1 but closer than a.md#0).
+    await upsertChunk(db, { id: 'a.md#0', sourcePath: 'a.md', chunkIndex: 0, content: 'a0', metadata: {}, contentHash: 'h1' }, [0, 1, 0])
+    await upsertChunk(db, { id: 'a.md#1', sourcePath: 'a.md', chunkIndex: 1, content: 'a1', metadata: {}, contentHash: 'h2' }, [1, 0, 0])
+    await upsertChunk(db, { id: 'b.md#0', sourcePath: 'b.md', chunkIndex: 0, content: 'b0', metadata: {}, contentHash: 'h3' }, [0.6, 0.6, 0])
+
+    // empty paths returns []
+    expect(await bestChunkPerDoc(db, [1, 0, 0], [])).toEqual([])
+
+    // two docs: one row per doc, best chunk chosen, ordered by ascending distance
+    const rows = await bestChunkPerDoc(db, [1, 0, 0], ['a.md', 'b.md'])
+    expect(rows.map((r) => r.id)).toEqual(['a.md#1', 'b.md#0'])
   })
 })
 
