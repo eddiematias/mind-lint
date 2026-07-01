@@ -68,7 +68,7 @@ async function main() {
       console.error(`[brain] ${err}`)
       process.exit(1) // fail closed (R-C1)
     }
-    const http = createMcpHttpServer(db, embedder, reranker, { authToken })
+    const http = createMcpHttpServer(db, embedder, reranker, { authToken, graphArm: cfg.retrieval?.graphArm })
     const mode = authToken ? ' (bearer auth required)' : ' (NO AUTH, BRAIN_ALLOW_NO_AUTH=1)'
     http.listen(port, host, () => console.log(`brain serving on http://${host}:${port}/mcp${mode}`))
 
