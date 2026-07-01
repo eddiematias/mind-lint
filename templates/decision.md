@@ -21,3 +21,10 @@ category:
 
 ## Review Date
 [When should this decision be revisited?]
+
+## Related
+<!-- Populate at creation. Link ONLY relationships explicitly stated above (faithful re-encoding, never inference); every [[link]] must resolve to a real file. Company ties come transitively via the project, so link the project, not the company (unless this is a company-level decision with no project). Do not link individual learnings (they live inside category files). -->
+- Part of [[Project]]
+<!-- Optional typed decision-to-decision links for prior decisions referenced above:
+     Builds on | Supersedes | Superseded by | Reverses | Extends | Deviates from | Governed by | Evolves | Fast-follow to | Relates to  [[YYYY-MM-DD-other-decision]] -->
+
