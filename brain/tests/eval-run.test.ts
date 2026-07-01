@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { dedupeToDocs, scoreEntry, aggregateByClass, parseEvalArgs, formatReport, type QueryResult, type EvalResult } from '../src/eval/run.js'
+import { dedupeToDocs, scoreEntry, aggregateByClass, parseEvalArgs, formatReport, classifyDelta, type QueryResult, type EvalResult } from '../src/eval/run.js'
 import type { GoldEntry } from '../src/eval/gold.js'
 
 describe('dedupeToDocs', () => {
@@ -37,8 +37,11 @@ describe('aggregateByClass', () => {
 describe('parseEvalArgs', () => {
   it('parses --gold/--k/--floor; ignores a non-numeric --k', () => {
     expect(parseEvalArgs(['--gold', 'g.jsonl', '--k', '5', '--floor', '0.9']))
-      .toEqual({ gold: 'g.jsonl', k: 5, floor: 0.9 })
-    expect(parseEvalArgs(['--k', 'abc'])).toEqual({ gold: undefined, k: undefined, floor: undefined })
+      .toEqual({ gold: 'g.jsonl', k: 5, floor: 0.9, compareGraphArm: false })
+    expect(parseEvalArgs(['--k', 'abc'])).toEqual({ gold: undefined, k: undefined, floor: undefined, compareGraphArm: false })
+  })
+  it('sets compareGraphArm true when --compare-graph-arm flag is present', () => {
+    expect(parseEvalArgs(['--compare-graph-arm'])).toMatchObject({ compareGraphArm: true })
   })
 })
 
@@ -59,7 +62,7 @@ describe('dedupeToDocs + scoreEntry edges', () => {
 
 describe('formatReport', () => {
   const base = (over: Partial<EvalResult> = {}): EvalResult => ({
-    env: { embedder: 'ollama:nomic-embed-text', reranker: 'noop' },
+    env: { embedder: 'ollama:nomic-embed-text', reranker: 'noop', graphArm: 'off' },
     perQuery: [{ id: 'branching', trimCandidate: true, recall: 1, mrr: 1, hit: true, missed: [] }],
     byClass: { trimCandidate: { count: 1, recall: 1, mrr: 1, hitRate: 1 }, stable: { count: 0, recall: 0, mrr: 0, hitRate: 0 } },
     k: 8, floor: 0.85, gatedClass: 'trim-candidate', pass: true, ...over,
@@ -89,5 +92,15 @@ describe('formatReport', () => {
     }))
     expect(out).toContain('BASELINE ONLY')
     expect(out).toMatch(/gated on stable/)
+  })
+})
+
+describe('classifyDelta', () => {
+  const qr = (hit: boolean) => ({ id: 'x', trimCandidate: false, recall: hit ? 1 : 0, mrr: hit ? 1 : 0, hit, missed: [] as string[] })
+  it('rescued when off miss and on hit', () => { expect(classifyDelta(qr(false), qr(true))).toBe('rescued') })
+  it('broken when off hit and on miss', () => { expect(classifyDelta(qr(true), qr(false))).toBe('broken') })
+  it('unchanged when both hit or both miss', () => {
+    expect(classifyDelta(qr(true), qr(true))).toBe('unchanged')
+    expect(classifyDelta(qr(false), qr(false))).toBe('unchanged')
   })
 })

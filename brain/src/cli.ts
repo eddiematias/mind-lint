@@ -19,7 +19,8 @@ import { parseFactsFile, type Fact } from './facts/markdown.js'
 import { staleFacts, parseStaleArgs } from './facts/freshness.js'
 import { captureSource, parseCaptureArgs } from './sources/capture.js'
 import { loadGoldSet } from './eval/gold.js'
-import { runEval, parseEvalArgs, formatReport } from './eval/run.js'
+import { runEval, runCompare, parseEvalArgs, formatReport, formatCompareReport } from './eval/run.js'
+import { DEFAULT_GRAPH_ARM } from './graph-arm.js'
 
 // brain/ is symlinked into the vault from the public clone, so Node resolves
 // import.meta.url to the CLONE's real path, not the vault. That's fine for locating
@@ -195,7 +196,13 @@ async function main() {
     await initSchema(db, cfg.embedder.dimensions)
     const reranker = makeReranker(cfg.reranker)
     const gold = await loadGoldSet(goldPath)
-    const result = await runEval({ db, embedder, reranker, gold, k, floor, rerankerLabel: cfg.reranker.enabled ? cfg.reranker.model : 'noop' })
+    const rerankerLabel = cfg.reranker.enabled ? cfg.reranker.model : 'noop'
+    if (args.compareGraphArm) {
+      const result = await runCompare({ db, embedder, reranker, gold, k, rerankerLabel, graphArm: { ...DEFAULT_GRAPH_ARM, ...cfg.retrieval?.graphArm, enabled: true } })
+      console.log(formatCompareReport(result))
+      process.exit(0)
+    }
+    const result = await runEval({ db, embedder, reranker, gold, k, floor, rerankerLabel })
     console.log(formatReport(result))
     process.exit(result.pass ? 0 : 1)
   }
