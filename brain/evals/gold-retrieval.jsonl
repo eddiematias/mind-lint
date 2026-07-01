@@ -1,5 +1,30 @@
 # Frozen gold set for the retrieval eval. Changing this file requires a "Why:" line in the commit body (do not silently rubber-stamp baseline drift). Labels are ground-truth (authored from file content), NOT from current retrieval output.
-# v1 is stable-only (a passing baseline). When Phase 4 tags a file to move from @import into scopeGlobs, add a trimCandidate entry for it, ground-truth-authored, e.g.:
+# Queries are the retrieval queries an AI assistant (Claude Code) actually fires against this vault during work: prior decisions, patterns, who/what. edgeReachable is stamped POST-HOC by `brain eval label-edges` (never hand-picked). Several targets sit in references-citation clusters so the graph arm has an addressable rescue population.
+# When Phase 4 tags a file to move from @import into scopeGlobs, add a trimCandidate entry for it, ground-truth-authored, e.g.:
 # {"id":"branching-rules","query":"what are the rules for branching in the JBR website repo","relevant":["rules/preferences.md"],"trimCandidate":true}
 {"id":"menu-seeder","query":"what did we decide about the menu seeder snapshot","relevant":["memory/decisions/2026-05-22-jbr-website-menu-seeder-snapshot.md"],"trimCandidate":false}
 {"id":"aws-deploy","query":"what is the JBR website deployment target","relevant":["memory/decisions/2026-04-17-jbr-website-aws-deployment-target.md"],"trimCandidate":false}
+{"id":"payload-cms","query":"why did we pick Payload as the headless CMS for the JBR website","relevant":["memory/decisions/2026-02-24-jbr-website-headless-cms-payload.md"],"trimCandidate":false}
+{"id":"npm-over-pnpm","query":"do we use npm or pnpm for the JBR website and why","relevant":["memory/decisions/2026-04-16-jbr-website-npm-over-pnpm.md"],"trimCandidate":false}
+{"id":"locations-url","query":"how are JBR location page URLs structured","relevant":["memory/decisions/2026-02-25-jbr-locations-three-tier-url.md"],"trimCandidate":false}
+{"id":"mapbox","query":"why did we choose Mapbox over Google Maps for the locations hub","relevant":["memory/decisions/2026-05-19-jbr-website-mapbox-over-google-locations-hub.md"],"trimCandidate":false}
+{"id":"franconnect","query":"how does franchise lead intake reach FranConnect","relevant":["memory/decisions/2026-04-28-jbr-franconnect-stays-email.md"],"trimCandidate":false}
+{"id":"klaviyo-auth","query":"what carries the JBR admin invitation and password reset emails","relevant":["memory/decisions/2026-05-04-jbr-website-klaviyo-as-transactional-auth-carrier.md"],"trimCandidate":false}
+{"id":"tagline-retire","query":"why did we retire the JBR tagline","relevant":["memory/decisions/2026-04-03-jbr-tagline-retirement.md"],"trimCandidate":false}
+{"id":"punch-list","query":"how is the JBR pre-launch punch list structured","relevant":["memory/decisions/2026-05-05-jbr-punch-list-architecture.md"],"trimCandidate":false}
+{"id":"daily-notes","query":"what is the Mind-Lint daily notes and calendar substrate design","relevant":["memory/decisions/2026-04-30-mind-lint-daily-notes-calendar-substrate.md"],"trimCandidate":false}
+{"id":"calendar-ondemand","query":"how does Mind-Lint fetch calendar events now","relevant":["memory/decisions/2026-05-01-mind-lint-on-demand-calendar-lookup.md"],"trimCandidate":false}
+{"id":"people-profiles","query":"what is the people profiles layer in Mind-Lint","relevant":["memory/decisions/2026-05-04-mind-lint-people-profiles-layer.md"],"trimCandidate":false}
+{"id":"topic-tag-split","query":"how do topics versus tags work in the Mind-Lint Obsidian vault","relevant":["memory/decisions/2026-04-29-mind-lint-topic-tag-wikilink-split.md"],"trimCandidate":false}
+{"id":"dotfile-install","query":"how is Mind-Lint installed via the dotfile symlink pattern","relevant":["memory/decisions/2026-04-21-mind-lint-dotfile-install-architecture.md"],"trimCandidate":false}
+{"id":"graphify","query":"what did we decide about the graphify tool for Mind-Lint","relevant":["memory/decisions/2026-05-05-mind-lint-graphify-tool-evaluation.md"],"trimCandidate":false}
+{"id":"pending-followups","query":"how does the pending followups state file and session hook work","relevant":["memory/decisions/2026-05-07-mind-lint-pending-followups-pattern.md"],"trimCandidate":false}
+{"id":"pod-abandoned","query":"why did we abandon the print on demand t-shirt arbitrage idea","relevant":["memory/decisions/2026-05-09-pod-tshirt-arbitrage-abandoned.md"],"trimCandidate":false}
+{"id":"posbe-auth-unify","query":"how did we unify the JBR website inbound auth from pos-be to one bearer token","relevant":["memory/decisions/2026-05-18-jbr-website-pos-be-inbound-bearer-auth-unification.md"],"trimCandidate":false}
+{"id":"posbe-auth-bug","query":"what was the pos-be undefined auth token bug and how was it handled","relevant":["memory/decisions/2026-05-18-pos-be-auth-undefined-token-bug.md"],"trimCandidate":false}
+{"id":"drafts-rollout","query":"how did the JBR drafts rollout expand Payload drafts across collections","relevant":["memory/decisions/2026-05-07-jbr-website-drafts-rollout.md"],"trimCandidate":false}
+{"id":"post-seed-sanity","query":"what is the post-seed drafts sanity check defense pattern","relevant":["memory/decisions/2026-05-18-jbr-website-post-seed-drafts-sanity-check.md"],"trimCandidate":false}
+{"id":"locations-seeder","query":"how did we snapshot the JBR locations into the seeder","relevant":["memory/decisions/2026-05-20-jbr-website-locations-seeder-snapshot.md"],"trimCandidate":false}
+{"id":"locations-payload-mirror","query":"why do JBR pages read locations from Payload only now","relevant":["memory/decisions/2026-05-21-jbr-website-locations-payload-mirror.md"],"trimCandidate":false}
+{"id":"api-mock-first","query":"how did we approach the JBR website API integration mock-first rebuild","relevant":["memory/decisions/2026-05-14-jbr-website-api-integration-mock-first-rebuild.md"],"trimCandidate":false}
+{"id":"payload-auth-helpers","query":"what is the two-export auth helper pattern for payload endpoints","relevant":["memory/decisions/2026-05-14-jbr-website-payload-auth-helpers-pattern.md"],"trimCandidate":false}
