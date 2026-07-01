@@ -65,6 +65,7 @@ For each contradiction found:
 - Apply approved resolutions
 
 ### Phase 5: Standard Checks (ask before fixing)
+- Decision docs (`memory/decisions/YYYY-MM-DD-*.md`) missing a `## Related` section, OR any `[[wikilink]]` inside a decision's `## Related` that does not resolve to a real file (a decision in `memory/decisions/`, or an entity in `wiki/projects/`|`wiki/companies/`) → flag the offending docs + dangling targets. Decisions should be born linked per the `## Related` convention in the decision template; this catches drift before it accumulates. Exclude docs whose `**Project:**` maps to no entity (e.g. `general`) or archived projects.
 - Orphan wiki pages (no backlinks, no sources) → suggest linking or archiving
 - Content pipeline stale entries (ideas sitting 30+ days) → suggest action
 - Error rules that may conflict → suggest resolution
