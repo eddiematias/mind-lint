@@ -5,6 +5,7 @@ export interface GoldEntry {
   query: string
   relevant: string[]      // vault-relative sourcePaths that SHOULD surface (ground-truth)
   trimCandidate: boolean   // true = a Phase-4 move candidate (scored as its own class)
+  edgeReachable: boolean   // POST-HOC observation: relevant doc is within 1 references-hop of a top hit. Stamped by the label tool, NEVER a query-selection filter (spec R-7).
   note?: string
 }
 
@@ -28,6 +29,7 @@ export function parseGoldSet(text: string): GoldEntry[] {
       query: e.query,
       relevant: e.relevant.map(String),
       trimCandidate: e.trimCandidate === true,
+      edgeReachable: e.edgeReachable === true,
       note: typeof e.note === 'string' ? e.note : undefined,
     })
   }
