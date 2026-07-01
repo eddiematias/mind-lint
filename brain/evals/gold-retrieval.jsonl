@@ -1,0 +1,5 @@
+# Frozen gold set for the retrieval eval. Changing this file requires a "Why:" line in the commit body (do not silently rubber-stamp baseline drift). Labels are ground-truth (authored from file content), NOT from current retrieval output.
+# v1 is stable-only (a passing baseline). When Phase 4 tags a file to move from @import into scopeGlobs, add a trimCandidate entry for it, ground-truth-authored, e.g.:
+# {"id":"branching-rules","query":"what are the rules for branching in the JBR website repo","relevant":["rules/preferences.md"],"trimCandidate":true}
+{"id":"menu-seeder","query":"what did we decide about the menu seeder snapshot","relevant":["memory/decisions/2026-05-22-jbr-website-menu-seeder-snapshot.md"],"trimCandidate":false}
+{"id":"aws-deploy","query":"what is the JBR website deployment target","relevant":["memory/decisions/2026-04-17-jbr-website-aws-deployment-target.md"],"trimCandidate":false}

@@ -3,7 +3,7 @@ import type { Embedder, Reranker, RetrievedChunk } from './types.js'
 import { vectorSearch, keywordSearch, getChunkContents } from './db.js'
 import { reciprocalRankFusion } from './rrf.js'
 
-const CANDIDATE_N = 20
+export const CANDIDATE_N = 20
 
 export async function retrieve(
   db: PGlite, embedder: Embedder, reranker: Reranker, query: string, k = 8,
