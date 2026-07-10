@@ -42,8 +42,18 @@ if ! git diff --quiet || ! git diff --cached --quiet || [ -n "$(git ls-files --o
 
     git commit -q -m "${MSG}${REMINDER}" 2>/dev/null
 
-    # Push if remote is configured (silent fail if offline)
+    # Push if remote is configured. Integrate remote commits first (e.g. the
+    # brain's autonomous nightly facts pushes from another machine) so the push
+    # isn't rejected non-fast-forward. Without this pull, once any other writer
+    # advances origin the laptop falls behind and every push is silently
+    # rejected, stranding commits locally. Rebase keeps history linear; on
+    # conflict, abort cleanly and leave the push for a human rather than
+    # stranding the repo mid-rebase.
     if git remote get-url origin &>/dev/null; then
-        git push -q 2>/dev/null &
+        if git pull --rebase --quiet 2>/dev/null; then
+            git push -q 2>/dev/null &
+        else
+            git rebase --abort 2>/dev/null
+        fi
     fi
 fi
