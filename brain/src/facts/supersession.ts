@@ -159,6 +159,51 @@ export function resolvedIds(doc: ProposalsDoc, decisions: Decision[]): Set<strin
   return s
 }
 
+// ── Pending (review front-end, /review-derived) ─────────────────────────────
+export interface PendingOpts {
+  minConfidence?: number
+  excludePathSubstrings?: string[]
+  limit?: number
+}
+export interface PendingResult {
+  pending: Proposal[]
+  totalPending: number
+  hiddenByFilter: number
+}
+
+// Pure. "Pending" uses the SAME resolvedIds as writePendingCount, so totalPending
+// equals the number the SessionStart hook prints. Filters/sort/limit are display-only.
+export function pendingProposals(
+  doc: ProposalsDoc,
+  decisions: Decision[],
+  opts: PendingOpts = {},
+): PendingResult {
+  const resolved = resolvedIds(doc, decisions)
+  const allPending = doc.proposals.filter((p) => !resolved.has(p.id))
+  const exclude = opts.excludePathSubstrings ?? []
+  const filtered = allPending.filter((p) => {
+    if (opts.minConfidence != null && p.confidence < opts.minConfidence) return false
+    if (exclude.some((s) => p.loser.sourcePath.includes(s) || p.winner.sourcePath.includes(s))) return false
+    return true
+  })
+  const sorted = [...filtered].sort((a, b) => b.confidence - a.confidence)
+  const limit = opts.limit ?? 20
+  return { pending: sorted.slice(0, limit), totalPending: allPending.length, hiddenByFilter: allPending.length - filtered.length }
+}
+
+// IO wrapper: read the two ledger files and compute pending. Missing files read as empty
+// (readMaybe), so a first run with no decisions file still works.
+export async function pendingProposalsFromVault(
+  vaultRoot: string,
+  opts: PendingOpts = {},
+): Promise<PendingResult> {
+  const proposalsPath = resolve(vaultRoot, 'memory/facts/_supersession-proposals.md')
+  const decisionsPath = resolve(vaultRoot, 'memory/facts/_supersession-decisions.md')
+  const doc = parseProposals(await readMaybe(proposalsPath))
+  const decisions = parseDecisions(await readMaybe(decisionsPath))
+  return pendingProposals(doc, decisions, opts)
+}
+
 // ── Judge prompt/parse + loser assignment (R-I5) ─────────────────────────────
 
 const CONFIDENCE_FLOOR = 0.7
