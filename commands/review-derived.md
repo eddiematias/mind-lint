@@ -44,10 +44,16 @@ graph as `source: derived, role: references`). Steps:
 
 ## Possible supersessions (facts)
 
-1. Read `memory/facts/_supersession-proposals.md`. Parse each `## <id>` block (verdict, confidence, loser, winner, axis, loserDecided). Read `memory/facts/_supersession-decisions.md` (may be absent) for ids already `confirmed`/`dismissed`, and read the `## lifecycle` block of the proposals file for ids already `applied`/`stale`/`reverted`/`checked`.
-2. Show ONLY proposals whose id is not yet in decisions and not in the lifecycle settled set. For each, print the loser claim, the winner claim, the axis, the confidence, and whether `loserDecided` is false (which-wins: you must pick which side loses).
+1. Call the `supersessions_pending` MCP tool (server `mind-lint-brain`) with `{ excludePathSubstrings: ["bakebot"], limit: 20 }`. It returns `{ pending, totalPending, hiddenByFilter }`, where each `pending` item has `id`, `verdict`, `confidence`, `loser {sourcePath, claim}`, `winner {sourcePath, claim}`, `axis`, `loserDecided`, `proposedOn`. The tool already drops ids that are decided (in `_supersession-decisions.md`) or settled in the proposals `## lifecycle`, sorts by confidence descending, hides archived-project proposals (the `excludePathSubstrings` filter), and caps the batch at `limit`. If the brain is unreachable, tell Eddie it is not running and stop this phase. (Adjust the args on request: raise `limit`, drop `minConfidence`, or clear `excludePathSubstrings` to include the archived pile.)
+2. State the counts plainly: "showing `<pending.length>` of `<totalPending>` pending, `<hiddenByFilter>` archived/filtered hidden." NEVER imply the batch is the whole queue. For each surfaced item, print the loser claim, the winner claim, the axis, the confidence, and whether `loserDecided` is false (which-wins: Eddie must pick which side loses).
 3. For each surfaced proposal, ask Eddie: confirm (apply the strike), dismiss (never propose again), or skip (leave pending).
-4. Write his decisions to `memory/facts/_supersession-decisions.md` (APPEND one line per decision; this file is human/laptop-owned, the cycle only reads it):
-   - `<id>: confirmed` (or `<id>: confirmed loser=<sourcePath>` when `loserDecided` is false and Eddie picks the loser)
+4. Write his decisions to `memory/facts/_supersession-decisions.md` (APPEND one line per decision; this file is human/laptop-owned, the cycle only reads it). Create it with this header on first write:
+   ```
+   # Supersession decisions
+   <!-- Human-owned, append-only. One line per decision: <id>: confirmed|dismissed [loser=<path>]. The dream cycle applies confirmed strikes and records dismissals; never hand-edit the proposals file. -->
+   ```
+   Then one line per decision:
+   - `<id>: confirmed` (or `<id>: confirmed loser=<sourcePath>` when `loserDecided` is false and Eddie picks the loser; if he will not pick, treat it as a skip and write nothing)
    - `<id>: dismissed`
-5. Do NOT edit `_supersession-proposals.md` or any `memory/facts/*.md` fact file. The next nightly cycle applies confirmed strikes (it is the sole fact-file writer). Reversal later is: un-strike the fact in its file; the cycle records that as a dismissal.
+   Do not double-decide within a run: track the ids you already wrote this session.
+5. Do NOT edit `_supersession-proposals.md` or any `memory/facts/*.md` fact file. Because the decisions file is append-only and `supersessions_pending` excludes decided ids, re-running continues where you left off, tell Eddie how many remain (`totalPending` minus what he just decided) and that he can re-run to keep going. The next nightly cycle applies confirmed strikes (it is the sole fact-file writer), or he can run `brain dream` to apply sooner. Reversal later is: un-strike the fact in its file; the cycle records that as a dismissal.
