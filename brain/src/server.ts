@@ -8,6 +8,7 @@ import type { Embedder, Reranker } from './types.js'
 import { retrieve } from './retriever.js'
 import { type GraphArmConfig } from './graph-arm.js'
 import { traverseEdges, listDerivedEdges, listSuppressions, insertSuppression, deleteSuppression } from './db.js'
+import { pendingProposalsFromVault } from './facts/supersession.js'
 
 const SUBTREE_RANK: Record<string, number> = { 'wiki/people/': 0, 'wiki/companies/': 1, 'wiki/projects/': 2 }
 
@@ -40,7 +41,7 @@ async function resolveSeed(db: PGlite, entity: string): Promise<string | null> {
 const SYNTH_HINT =
   'These are ranked evidence chunks from the vault. Synthesize a cited answer (reference sourcePath) and end with a short gap analysis of what is missing or stale.'
 
-export function buildServer(db: PGlite, embedder: Embedder, reranker: Reranker, graphArmCfg?: GraphArmConfig): McpServer {
+export function buildServer(db: PGlite, embedder: Embedder, reranker: Reranker, graphArmCfg?: GraphArmConfig, vaultRoot?: string): McpServer {
   const server = new McpServer({ name: 'mind-lint-brain', version: '0.1.0' })
 
   server.tool('search', { query: z.string(), k: z.number().optional() }, async ({ query, k }) => {
@@ -106,6 +107,22 @@ export function buildServer(db: PGlite, embedder: Embedder, reranker: Reranker, 
     },
   )
 
+  server.tool(
+    'supersessions_pending',
+    {
+      minConfidence: z.number().optional(),
+      excludePathSubstrings: z.array(z.string()).optional(),
+      limit: z.number().optional(),
+    },
+    async ({ minConfidence, excludePathSubstrings, limit }) => {
+      if (!vaultRoot) {
+        return { content: [{ type: 'text', text: JSON.stringify({ error: 'vaultRoot not configured on the server' }) }] }
+      }
+      const res = await pendingProposalsFromVault(vaultRoot, { minConfidence, excludePathSubstrings, limit })
+      return { content: [{ type: 'text', text: JSON.stringify(res) }] }
+    },
+  )
+
   return server
 }
 
@@ -128,7 +145,7 @@ function bearerOk(authHeader: string | undefined, expected: string): boolean {
 // breaks the post-initialize lifecycle (notifications/initialized returns 500), which
 // a strict client (Claude Code) trips over. db/embedder/reranker are reused via
 // closure; only the thin server/transport wrapper is recreated per request.
-export function createMcpHttpServer(db: PGlite, embedder: Embedder, reranker: Reranker, opts: { authToken?: string; graphArm?: GraphArmConfig } = {}): Server {
+export function createMcpHttpServer(db: PGlite, embedder: Embedder, reranker: Reranker, opts: { authToken?: string; graphArm?: GraphArmConfig; vaultRoot?: string } = {}): Server {
   return createServer(async (req, res) => {
     // App-level bearer gate (layer C), R-I1: FIRST statement, BEFORE the 405 method gate
     // and BEFORE any body read. Only enforced when a token is configured, so the default
@@ -150,7 +167,7 @@ export function createMcpHttpServer(db: PGlite, embedder: Embedder, reranker: Re
       const chunks: Buffer[] = []
       for await (const c of req) chunks.push(c as Buffer)
       const body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : undefined
-      const server = buildServer(db, embedder, reranker, opts.graphArm)
+      const server = buildServer(db, embedder, reranker, opts.graphArm, opts.vaultRoot)
       const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined })
       res.on('close', () => { void transport.close(); void server.close() })
       await server.connect(transport)
