@@ -348,11 +348,14 @@ export async function applyConfirmedSupersessions(
     // PR-6: which-wins -- the human's chosenLoserPath decides which side loses.
     let effLoser = p.loser, effWinner = p.winner
     if (!p.loserDecided) {
-      if (dcn.chosenLoserPath === p.winner.sourcePath) { effLoser = p.winner; effWinner = p.loser }
-      else if (dcn.chosenLoserPath !== p.loser.sourcePath) {
-        // confirmed a which-wins without a valid loser= pick: cannot apply.
+      const samePath = p.loser.sourcePath === p.winner.sourcePath
+      if (!samePath && dcn.chosenLoserPath === p.winner.sourcePath) {
+        effLoser = p.winner; effWinner = p.loser // genuine cross-file flip
+      } else if (dcn.chosenLoserPath !== p.loser.sourcePath) {
+        // no valid loser pick (null, or a path that is neither side): cannot apply
         doc.lifecycle.push({ kind: 'stale', id: dcn.id }); lifecycleIds.add(dcn.id); stale++; continue
       }
+      // else: chosenLoserPath === p.loser.sourcePath -> accept proposed loser (covers same-path)
     }
     const hit = await findFact(deps.vaultRoot, keyOf(effLoser))
     if (!hit) { doc.lifecycle.push({ kind: 'stale', id: dcn.id }); lifecycleIds.add(dcn.id); stale++; continue }
