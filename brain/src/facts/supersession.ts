@@ -161,6 +161,15 @@ export function judgedIds(doc: ProposalsDoc, decisions: Decision[]): Set<string>
   return s
 }
 
+// relKeys the probe must NOT re-judge: every proposal's relKey (incl. retired, whose ##
+// block still carries sourcePaths) and any lifecycle entry that stored a relKey.
+export function judgedRelKeys(doc: ProposalsDoc): Set<string> {
+  const s = new Set<string>()
+  for (const p of doc.proposals) s.add(p.relKey || relKey(p.loser.sourcePath, p.winner.sourcePath))
+  for (const l of doc.lifecycle) if (l.relKey) s.add(l.relKey)
+  return s
+}
+
 // ids whose state is settled (used by the surface to hide rows that no longer need a decision).
 export function resolvedIds(doc: ProposalsDoc, decisions: Decision[]): Set<string> {
   const s = new Set<string>()
@@ -379,9 +388,12 @@ export async function runSupersessionProbe(
   const doc = parseProposals(await readMaybe(deps.proposalsPath))
   const decisions = parseDecisions(await readMaybe(deps.decisionsPath))
   const judged = judgedIds(doc, decisions)
+  const judgedRel = judgedRelKeys(doc)
   const cache = await loadVectorCache(deps.cachePath)
 
-  const files = await fg('memory/facts/*.md', { cwd: deps.vaultRoot, dot: true })
+  // Sorted for reproducibility: relKey dedup below is "first pair wins" per run, and a
+  // stable file order makes that deterministic across runs and across machines.
+  const files = (await fg('memory/facts/*.md', { cwd: deps.vaultRoot, dot: true })).sort()
   const liveKeys = new Set<string>()
   let allPairs: { a: Fact; b: Fact; id: string }[] = []
   try {
@@ -400,6 +412,18 @@ export async function runSupersessionProbe(
   }
   pruneVectorCache(cache, liveKeys) // PR-2: prune ONCE, against the union of all live keys
   await saveVectorCache(deps.cachePath, cache)
+
+  // Dedup by relKey (Move 1): a reworded fact produces a fresh pairId (claim-text hash),
+  // so the id-based `judged` filter above misses it. relKey is claim-text-independent
+  // (sorted sourcePath pair), so it survives rewording. Persisted relKeys seed the set;
+  // intra-run duplicates are first-wins, deterministic because `files` is sorted above.
+  const seenRel = new Set(judgedRel)
+  allPairs = allPairs.filter(({ a, b }) => {
+    const rk = relKey(a.sourcePath, b.sourcePath)
+    if (seenRel.has(rk)) return false
+    seenRel.add(rk)
+    return true
+  })
 
   const capped = allPairs.length > deps.maxPairsPerRun
   if (capped) {
@@ -429,7 +453,7 @@ export async function runSupersessionProbe(
       })
       proposed++
     } else {
-      doc.lifecycle.push({ kind: 'checked', id }) // genuine negative verdict, do not re-judge
+      doc.lifecycle.push({ kind: 'checked', id, relKey: relKey(a.sourcePath, b.sourcePath) }) // genuine negative verdict, do not re-judge
     }
   }
   await writeFile(deps.proposalsPath, renderProposals(doc)) // PR-8: deps path, not hardcoded
