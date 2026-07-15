@@ -223,6 +223,65 @@ export async function pendingProposalsFromVault(
   return pendingProposals(doc, decisions, opts)
 }
 
+// ── One-time backlog sweep (Move 4) ──────────────────────────────────────────
+
+export interface SweepReport {
+  intraDocRetired: number; dupesRetired: number; kept: number
+  decidedPreserved: number; conflicts: { relKey: string; ids: string[] }[]; pendingAfter: number
+}
+
+// Pure. Appends `retired` lifecycle lines for (a) intra-doc proposals and (b) all-but-one
+// per cross-doc relKey. Never retires a decided id. Flags cross-doc relKey groups with >1
+// decided member (the CLI refuses to write when any conflict is reported).
+export function retireBacklog(doc: ProposalsDoc, decisions: Decision[]): { doc: ProposalsDoc; report: SweepReport } {
+  const decided = new Set(decisions.map((d) => d.id))
+  // B1: exclude only already-resolved-by-lifecycle proposals; keep decided ones visible.
+  const lifecycleResolved = new Set(doc.lifecycle.map((l) => l.id))
+  const live = doc.proposals.filter((p) => !lifecycleResolved.has(p.id))
+  const toRetire = new Set<string>()
+  let intraDocRetired = 0, dupesRetired = 0
+  const conflicts: { relKey: string; ids: string[] }[] = []
+
+  // (a) intra-doc: retire undecided same-path proposals.
+  for (const p of live) {
+    if (p.loser.sourcePath === p.winner.sourcePath && !decided.has(p.id)) { toRetire.add(p.id); intraDocRetired++ }
+  }
+
+  // (b) collapse per cross-doc relKey. Same-path proposals are excluded from grouping (B2').
+  const groups = new Map<string, Proposal[]>()
+  for (const p of live) {
+    if (toRetire.has(p.id) || p.loser.sourcePath === p.winner.sourcePath) continue
+    const rk = p.relKey || relKey(p.loser.sourcePath, p.winner.sourcePath)
+    const arr = groups.get(rk) ?? (groups.set(rk, []), groups.get(rk)!)
+    arr.push(p)
+  }
+  for (const [rk, members] of groups) {
+    const decidedMembers = members.filter((m) => decided.has(m.id))
+    if (decidedMembers.length > 1) { conflicts.push({ relKey: rk, ids: decidedMembers.map((m) => m.id).sort() }); continue }
+    if (members.length <= 1) continue
+    // keep-which-one: decided > loserDecided:true > higher confidence > earlier proposedOn > smallest id
+    const keep = [...members].sort((x, y) =>
+      (Number(decided.has(y.id)) - Number(decided.has(x.id))) ||
+      (Number(y.loserDecided) - Number(x.loserDecided)) ||
+      (y.confidence - x.confidence) ||
+      (x.proposedOn < y.proposedOn ? -1 : x.proposedOn > y.proposedOn ? 1 : 0) ||
+      (x.id < y.id ? -1 : 1))[0]
+    for (const m of members) {
+      if (m.id === keep.id || decided.has(m.id)) continue
+      toRetire.add(m.id); dupesRetired++
+    }
+  }
+
+  const lifecycle = [...doc.lifecycle]
+  for (const p of live) if (toRetire.has(p.id)) lifecycle.push({ kind: 'retired', id: p.id, relKey: p.relKey })
+  const outDoc: ProposalsDoc = { proposals: doc.proposals, lifecycle }
+  const resolvedAfter = resolvedIds(outDoc, decisions)
+  const pendingAfter = outDoc.proposals.filter((p) => !resolvedAfter.has(p.id)).length
+  const decidedPreserved = doc.proposals.filter((p) => decided.has(p.id)).length
+  const kept = live.filter((p) => !toRetire.has(p.id)).length
+  return { doc: outDoc, report: { intraDocRetired, dupesRetired, kept, decidedPreserved, conflicts, pendingAfter } }
+}
+
 // ── Judge prompt/parse + loser assignment (R-I5) ─────────────────────────────
 
 const CONFIDENCE_FLOOR = 0.7
