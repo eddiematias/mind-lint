@@ -57,9 +57,10 @@ export interface Proposal {
   axis: string
   loserDecided: boolean   // false => which-wins (equal/ambiguous dates, R-I5)
   proposedOn: string
+  relKey: string
 }
-export type LifecycleKind = 'applied' | 'stale' | 'reverted' | 'checked'
-export interface ProposalsDoc { proposals: Proposal[]; lifecycle: { kind: LifecycleKind; id: string }[] }
+export type LifecycleKind = 'applied' | 'stale' | 'reverted' | 'checked' | 'retired'
+export interface ProposalsDoc { proposals: Proposal[]; lifecycle: { kind: LifecycleKind; id: string; relKey?: string }[] }
 export type DecisionStatus = 'confirmed' | 'dismissed'
 export interface Decision { id: string; status: DecisionStatus; chosenLoserPath: string | null }
 
@@ -72,9 +73,15 @@ export function pairId(a: FactRef, b: FactRef): string {
   return createHash('sha1').update(sides.join('')).digest('hex').slice(0, 16)
 }
 
+// Dedup identity: the sorted source-doc pair. Stable across LLM rewordings of the claim
+// (unlike pairId, which hashes claim text). Printable "::" separator (written to markdown).
+export function relKey(aPath: string, bPath: string): string {
+  return [aPath, bPath].sort().join('::')
+}
+
 const PROPOSAL_HEADER =
   '<!-- Cycle-owned, APPEND-ONLY. Each ## block is a supersession candidate. Lifecycle lines ' +
-  '(applied/stale/reverted/checked: <id>) are appended by the cycle. Decisions go in ' +
+  '(applied/stale/reverted/checked/retired: <id>) are appended by the cycle. Decisions go in ' +
   '_supersession-decisions.md (confirm/dismiss there); never edit this file by hand. -->'
 
 export function renderProposals(doc: ProposalsDoc): string {
@@ -87,11 +94,12 @@ export function renderProposals(doc: ProposalsDoc): string {
       `- winner: \`${p.winner.sourcePath}\` :: ${p.winner.claim}`,
       `- axis: ${p.axis}`,
       `- loserDecided: \`${p.loserDecided}\``,
-      `- proposedOn: \`${p.proposedOn}\``, '')
+      `- proposedOn: \`${p.proposedOn}\``,
+      `- relKey: \`${p.relKey}\``, '')
   }
   if (doc.lifecycle.length > 0) {
     out.push('## lifecycle', '')
-    for (const l of doc.lifecycle) out.push(`- ${l.kind}: ${l.id}`)
+    for (const l of doc.lifecycle) out.push(`- ${l.kind}: ${l.id}${l.relKey ? ` \`${l.relKey}\`` : ''}`)
     out.push('')
   }
   return out.join('\n')
@@ -109,14 +117,14 @@ export function parseProposals(content: string): ProposalsDoc {
     const head = lines[0].trim()
     if (head === 'lifecycle') {
       for (const raw of lines.slice(1)) {
-        const m = raw.trim().match(/^- (applied|stale|reverted|checked):\s*(\S+)/)
-        if (m) doc.lifecycle.push({ kind: m[1] as LifecycleKind, id: m[2] })
+        const m = raw.trim().match(/^- (applied|stale|reverted|checked|retired):\s*(\S+)(?:\s+`([^`]+)`)?/)
+        if (m) doc.lifecycle.push({ kind: m[1] as LifecycleKind, id: m[2], ...(m[3] ? { relKey: m[3] } : {}) })
       }
       continue
     }
     const p: Proposal = {
       id: head, loser: { sourcePath: '', claim: '' }, winner: { sourcePath: '', claim: '' },
-      verdict: 'no_contradiction', confidence: 0, axis: '', loserDecided: true, proposedOn: '',
+      verdict: 'no_contradiction', confidence: 0, axis: '', loserDecided: true, proposedOn: '', relKey: '',
     }
     for (const raw of lines.slice(1)) {
       const line = raw.trim()
@@ -127,7 +135,9 @@ export function parseProposals(content: string): ProposalsDoc {
       else if (line.startsWith('- axis:')) { p.axis = line.slice('- axis:'.length).trim() }
       else if (line.startsWith('- loserDecided:')) { p.loserDecided = bt(line) === 'true' }
       else if (line.startsWith('- proposedOn:')) { p.proposedOn = bt(line) }
+      else if (line.startsWith('- relKey:')) { p.relKey = bt(line) }
     }
+    if (!p.relKey) p.relKey = relKey(p.loser.sourcePath, p.winner.sourcePath)
     if (p.id) doc.proposals.push(p)
   }
   return doc
@@ -148,6 +158,15 @@ export function judgedIds(doc: ProposalsDoc, decisions: Decision[]): Set<string>
   for (const p of doc.proposals) s.add(p.id)
   for (const l of doc.lifecycle) s.add(l.id)
   for (const d of decisions) s.add(d.id)
+  return s
+}
+
+// relKeys the probe must NOT re-judge: every proposal's relKey (incl. retired, whose ##
+// block still carries sourcePaths) and any lifecycle entry that stored a relKey.
+export function judgedRelKeys(doc: ProposalsDoc): Set<string> {
+  const s = new Set<string>()
+  for (const p of doc.proposals) s.add(p.relKey || relKey(p.loser.sourcePath, p.winner.sourcePath))
+  for (const l of doc.lifecycle) if (l.relKey) s.add(l.relKey)
   return s
 }
 
@@ -202,6 +221,65 @@ export async function pendingProposalsFromVault(
   const doc = parseProposals(await readMaybe(proposalsPath))
   const decisions = parseDecisions(await readMaybe(decisionsPath))
   return pendingProposals(doc, decisions, opts)
+}
+
+// ── One-time backlog sweep (Move 4) ──────────────────────────────────────────
+
+export interface SweepReport {
+  intraDocRetired: number; dupesRetired: number; kept: number
+  decidedPreserved: number; conflicts: { relKey: string; ids: string[] }[]; pendingAfter: number
+}
+
+// Pure. Appends `retired` lifecycle lines for (a) intra-doc proposals and (b) all-but-one
+// per cross-doc relKey. Never retires a decided id. Flags cross-doc relKey groups with >1
+// decided member (the CLI refuses to write when any conflict is reported).
+export function retireBacklog(doc: ProposalsDoc, decisions: Decision[]): { doc: ProposalsDoc; report: SweepReport } {
+  const decided = new Set(decisions.map((d) => d.id))
+  // B1: exclude only already-resolved-by-lifecycle proposals; keep decided ones visible.
+  const lifecycleResolved = new Set(doc.lifecycle.map((l) => l.id))
+  const live = doc.proposals.filter((p) => !lifecycleResolved.has(p.id))
+  const toRetire = new Set<string>()
+  let intraDocRetired = 0, dupesRetired = 0
+  const conflicts: { relKey: string; ids: string[] }[] = []
+
+  // (a) intra-doc: retire undecided same-path proposals.
+  for (const p of live) {
+    if (p.loser.sourcePath === p.winner.sourcePath && !decided.has(p.id)) { toRetire.add(p.id); intraDocRetired++ }
+  }
+
+  // (b) collapse per cross-doc relKey. Same-path proposals are excluded from grouping (B2').
+  const groups = new Map<string, Proposal[]>()
+  for (const p of live) {
+    if (toRetire.has(p.id) || p.loser.sourcePath === p.winner.sourcePath) continue
+    const rk = p.relKey || relKey(p.loser.sourcePath, p.winner.sourcePath)
+    const arr = groups.get(rk) ?? (groups.set(rk, []), groups.get(rk)!)
+    arr.push(p)
+  }
+  for (const [rk, members] of groups) {
+    const decidedMembers = members.filter((m) => decided.has(m.id))
+    if (decidedMembers.length > 1) { conflicts.push({ relKey: rk, ids: decidedMembers.map((m) => m.id).sort() }); continue }
+    if (members.length <= 1) continue
+    // keep-which-one: decided > loserDecided:true > higher confidence > earlier proposedOn > smallest id
+    const keep = [...members].sort((x, y) =>
+      (Number(decided.has(y.id)) - Number(decided.has(x.id))) ||
+      (Number(y.loserDecided) - Number(x.loserDecided)) ||
+      (y.confidence - x.confidence) ||
+      (x.proposedOn < y.proposedOn ? -1 : x.proposedOn > y.proposedOn ? 1 : 0) ||
+      (x.id < y.id ? -1 : 1))[0]
+    for (const m of members) {
+      if (m.id === keep.id || decided.has(m.id)) continue
+      toRetire.add(m.id); dupesRetired++
+    }
+  }
+
+  const lifecycle = [...doc.lifecycle]
+  for (const p of live) if (toRetire.has(p.id)) lifecycle.push({ kind: 'retired', id: p.id, relKey: p.relKey || relKey(p.loser.sourcePath, p.winner.sourcePath) })
+  const outDoc: ProposalsDoc = { proposals: doc.proposals, lifecycle }
+  const resolvedAfter = resolvedIds(outDoc, decisions)
+  const pendingAfter = outDoc.proposals.filter((p) => !resolvedAfter.has(p.id)).length
+  const decidedPreserved = doc.proposals.filter((p) => decided.has(p.id)).length
+  const kept = live.filter((p) => !toRetire.has(p.id)).length
+  return { doc: outDoc, report: { intraDocRetired, dupesRetired, kept, decidedPreserved, conflicts, pendingAfter } }
 }
 
 // ── Judge prompt/parse + loser assignment (R-I5) ─────────────────────────────
@@ -260,6 +338,7 @@ export function candidatePairs(
   for (let i = 0; i < live.length; i++) {
     for (let j = i + 1; j < live.length; j++) {
       const a = live[i], b = live[j]
+      if (a.sourcePath === b.sourcePath) continue // Move 2: same-doc Context/Decision is history, not a live contradiction
       const c = cosine(cache.get(factKey(a))!, cache.get(factKey(b))!)
       if (c < lo || c > hi) continue
       const id = pairId(a, b)
@@ -328,11 +407,14 @@ export async function applyConfirmedSupersessions(
     // PR-6: which-wins -- the human's chosenLoserPath decides which side loses.
     let effLoser = p.loser, effWinner = p.winner
     if (!p.loserDecided) {
-      if (dcn.chosenLoserPath === p.winner.sourcePath) { effLoser = p.winner; effWinner = p.loser }
-      else if (dcn.chosenLoserPath !== p.loser.sourcePath) {
-        // confirmed a which-wins without a valid loser= pick: cannot apply.
+      const samePath = p.loser.sourcePath === p.winner.sourcePath
+      if (!samePath && dcn.chosenLoserPath === p.winner.sourcePath) {
+        effLoser = p.winner; effWinner = p.loser // genuine cross-file flip
+      } else if (dcn.chosenLoserPath !== p.loser.sourcePath) {
+        // no valid loser pick (null, or a path that is neither side): cannot apply
         doc.lifecycle.push({ kind: 'stale', id: dcn.id }); lifecycleIds.add(dcn.id); stale++; continue
       }
+      // else: chosenLoserPath === p.loser.sourcePath -> accept proposed loser (covers same-path)
     }
     const hit = await findFact(deps.vaultRoot, keyOf(effLoser))
     if (!hit) { doc.lifecycle.push({ kind: 'stale', id: dcn.id }); lifecycleIds.add(dcn.id); stale++; continue }
@@ -368,9 +450,12 @@ export async function runSupersessionProbe(
   const doc = parseProposals(await readMaybe(deps.proposalsPath))
   const decisions = parseDecisions(await readMaybe(deps.decisionsPath))
   const judged = judgedIds(doc, decisions)
+  const judgedRel = judgedRelKeys(doc)
   const cache = await loadVectorCache(deps.cachePath)
 
-  const files = await fg('memory/facts/*.md', { cwd: deps.vaultRoot, dot: true })
+  // Sorted for reproducibility: relKey dedup below is "first pair wins" per run, and a
+  // stable file order makes that deterministic across runs and across machines.
+  const files = (await fg('memory/facts/*.md', { cwd: deps.vaultRoot, dot: true })).sort()
   const liveKeys = new Set<string>()
   let allPairs: { a: Fact; b: Fact; id: string }[] = []
   try {
@@ -389,6 +474,18 @@ export async function runSupersessionProbe(
   }
   pruneVectorCache(cache, liveKeys) // PR-2: prune ONCE, against the union of all live keys
   await saveVectorCache(deps.cachePath, cache)
+
+  // Dedup by relKey (Move 1): a reworded fact produces a fresh pairId (claim-text hash),
+  // so the id-based `judged` filter above misses it. relKey is claim-text-independent
+  // (sorted sourcePath pair), so it survives rewording. Persisted relKeys seed the set;
+  // intra-run duplicates are first-wins, deterministic because `files` is sorted above.
+  const seenRel = new Set(judgedRel)
+  allPairs = allPairs.filter(({ a, b }) => {
+    const rk = relKey(a.sourcePath, b.sourcePath)
+    if (seenRel.has(rk)) return false
+    seenRel.add(rk)
+    return true
+  })
 
   const capped = allPairs.length > deps.maxPairsPerRun
   if (capped) {
@@ -414,11 +511,11 @@ export async function runSupersessionProbe(
       doc.proposals.push({
         id, loser: { sourcePath: la.loser.sourcePath, claim: la.loser.claim },
         winner: { sourcePath: la.winner.sourcePath, claim: la.winner.claim },
-        verdict: r.verdict, confidence: r.confidence, axis: r.axis, loserDecided: la.decided, proposedOn: deps.now,
+        verdict: r.verdict, confidence: r.confidence, axis: r.axis, loserDecided: la.decided, proposedOn: deps.now, relKey: relKey(a.sourcePath, b.sourcePath),
       })
       proposed++
     } else {
-      doc.lifecycle.push({ kind: 'checked', id }) // genuine negative verdict, do not re-judge
+      doc.lifecycle.push({ kind: 'checked', id, relKey: relKey(a.sourcePath, b.sourcePath) }) // genuine negative verdict, do not re-judge
     }
   }
   await writeFile(deps.proposalsPath, renderProposals(doc)) // PR-8: deps path, not hardcoded

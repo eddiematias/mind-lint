@@ -86,4 +86,73 @@ describe('applyConfirmedSupersessions', () => {
     expect(g).toContain('## Claim A')        // the proposal's placeholder loser stays live
     expect(g).not.toContain('## ~~Claim A~~')
   })
+
+  it('same-path confirmed loser=<path> strikes the proposed loser (accept, no swap)', async () => {
+    const d = await mkdtemp(resolve(tmpdir(), 'apply-')); dirs.push(d)
+    await mkdir(resolve(d, 'memory/facts'), { recursive: true })
+    const path = 'memory/learnings/d.md'
+    const OLD = { sourcePath: path, claim: 'Old claim' }
+    const NEW = { sourcePath: path, claim: 'New claim' }
+    const id = pairId(OLD, NEW)
+    await writeFile(resolve(d, 'memory/facts/_general.md'),
+      '# Facts (unattached)\n\n' +
+      `## ${OLD.claim}\n\n- kind: \`fact\`\n- confidence: \`0.9\`\n- source: \`${OLD.sourcePath}\`\n\n` +
+      `## ${NEW.claim}\n\n- kind: \`fact\`\n- confidence: \`0.9\`\n- source: \`${NEW.sourcePath}\`\n`)
+    await writeFile(resolve(d, 'memory/facts/_supersession-proposals.md'),
+      '# Supersession proposals\n\n' +
+      `## ${id}\n\n- verdict: \`supersedes\`\n- confidence: \`0.9\`\n- loser: \`${OLD.sourcePath}\` :: ${OLD.claim}\n- winner: \`${NEW.sourcePath}\` :: ${NEW.claim}\n- axis: x\n- loserDecided: \`false\`\n- proposedOn: \`2026-06-28\`\n`)
+    const dep = { vaultRoot: d, proposalsPath: resolve(d, 'memory/facts/_supersession-proposals.md'), decisionsPath: resolve(d, 'memory/facts/_supersession-decisions.md') }
+    await writeFile(dep.decisionsPath, `${id}: confirmed loser=${path}\n`)
+    const res = await applyConfirmedSupersessions(dep)
+    expect(res.applied).toBe(1)
+    const g = await readFile(resolve(d, 'memory/facts/_general.md'), 'utf8')
+    expect(g).toContain('## ~~Old claim~~')  // the proposed (displayed) loser is struck
+    expect(g).toContain('## New claim')
+    expect(g).not.toContain('## ~~New claim~~')
+  })
+
+  it('same-path bare confirmed (no loser=) stays stale, strikes nothing', async () => {
+    const d = await mkdtemp(resolve(tmpdir(), 'apply-')); dirs.push(d)
+    await mkdir(resolve(d, 'memory/facts'), { recursive: true })
+    const path = 'memory/learnings/d.md'
+    const OLD = { sourcePath: path, claim: 'Old claim' }
+    const NEW = { sourcePath: path, claim: 'New claim' }
+    const id = pairId(OLD, NEW)
+    await writeFile(resolve(d, 'memory/facts/_general.md'),
+      '# Facts (unattached)\n\n' +
+      `## ${OLD.claim}\n\n- kind: \`fact\`\n- confidence: \`0.9\`\n- source: \`${OLD.sourcePath}\`\n\n` +
+      `## ${NEW.claim}\n\n- kind: \`fact\`\n- confidence: \`0.9\`\n- source: \`${NEW.sourcePath}\`\n`)
+    await writeFile(resolve(d, 'memory/facts/_supersession-proposals.md'),
+      '# Supersession proposals\n\n' +
+      `## ${id}\n\n- verdict: \`supersedes\`\n- confidence: \`0.9\`\n- loser: \`${OLD.sourcePath}\` :: ${OLD.claim}\n- winner: \`${NEW.sourcePath}\` :: ${NEW.claim}\n- axis: x\n- loserDecided: \`false\`\n- proposedOn: \`2026-06-28\`\n`)
+    const dep = { vaultRoot: d, proposalsPath: resolve(d, 'memory/facts/_supersession-proposals.md'), decisionsPath: resolve(d, 'memory/facts/_supersession-decisions.md') }
+    await writeFile(dep.decisionsPath, `${id}: confirmed\n`)
+    const res = await applyConfirmedSupersessions(dep)
+    expect(res.applied).toBe(0); expect(res.stale).toBe(1)
+    const g = await readFile(resolve(d, 'memory/facts/_general.md'), 'utf8')
+    expect(g).toContain('## Old claim'); expect(g).not.toContain('~~')
+  })
+
+  it('cross-file confirmed loser=<winner path> still swaps', async () => {
+    const d = await mkdtemp(resolve(tmpdir(), 'apply-')); dirs.push(d)
+    await mkdir(resolve(d, 'memory/facts'), { recursive: true })
+    const LA = { sourcePath: 'memory/learnings/a.md', claim: 'Claim A' }
+    const LB = { sourcePath: 'memory/learnings/b.md', claim: 'Claim B' }
+    const id = pairId(LA, LB)
+    await writeFile(resolve(d, 'memory/facts/_general.md'),
+      '# Facts (unattached)\n\n' +
+      `## ${LA.claim}\n\n- kind: \`fact\`\n- confidence: \`0.9\`\n- source: \`${LA.sourcePath}\`\n\n` +
+      `## ${LB.claim}\n\n- kind: \`fact\`\n- confidence: \`0.9\`\n- source: \`${LB.sourcePath}\`\n`)
+    await writeFile(resolve(d, 'memory/facts/_supersession-proposals.md'),
+      '# Supersession proposals\n\n' +
+      `## ${id}\n\n- verdict: \`supersedes\`\n- confidence: \`0.9\`\n- loser: \`${LA.sourcePath}\` :: ${LA.claim}\n- winner: \`${LB.sourcePath}\` :: ${LB.claim}\n- axis: x\n- loserDecided: \`false\`\n- proposedOn: \`2026-06-28\`\n`)
+    const dep = { vaultRoot: d, proposalsPath: resolve(d, 'memory/facts/_supersession-proposals.md'), decisionsPath: resolve(d, 'memory/facts/_supersession-decisions.md') }
+    await writeFile(dep.decisionsPath, `${id}: confirmed loser=${LB.sourcePath}\n`)
+    const res = await applyConfirmedSupersessions(dep)
+    expect(res.applied).toBe(1)
+    const g = await readFile(resolve(d, 'memory/facts/_general.md'), 'utf8')
+    expect(g).toContain('## ~~Claim B~~')
+    expect(g).toContain('## Claim A')
+    expect(g).not.toContain('## ~~Claim A~~')
+  })
 })

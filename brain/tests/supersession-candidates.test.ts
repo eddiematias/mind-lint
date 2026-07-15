@@ -31,4 +31,15 @@ describe('candidatePairs', () => {
     const pairs = candidatePairs([A, Bs], cache2, 0.80, 0.985, new Set())
     expect(pairs).toHaveLength(0)
   })
+  it('excludes pairs from the same source doc (in-band cosine)', () => {
+    const facts = [
+      { entity: null, claim: 'old X', sourcePath: 'memory/decisions/d.md', superseded: false, validFrom: '' },
+      { entity: null, claim: 'new Y', sourcePath: 'memory/decisions/d.md', superseded: false, validFrom: '' },
+    ] as any
+    const cache = new Map<string, number[]>()
+    cache.set(factKey(facts[0]), [1, 0])
+    cache.set(factKey(facts[1]), [0.95, 0.31]) // cosine ~0.95 with [1,0], inside [0.5, 0.99]
+    const pairs = candidatePairs(facts, cache, 0.5, 0.99, new Set())
+    expect(pairs).toHaveLength(0)
+  })
 })

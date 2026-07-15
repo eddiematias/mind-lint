@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises'
+import { readFile, writeFile } from 'node:fs/promises'
 import { resolve, dirname, basename } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { loadConfig, requireVaultRoot, serveAuthError } from './config.js'
@@ -12,7 +12,7 @@ import { indexVault } from './indexer.js'
 import { createMcpHttpServer } from './server.js'
 import { pullVault, startReindexLoop } from './reindex-loop.js'
 import { runFactsCycle } from './dream-cycle.js'
-import { restampValidFrom, applyConfirmedSupersessions, runSupersessionProbe } from './facts/supersession.js'
+import { restampValidFrom, applyConfirmedSupersessions, runSupersessionProbe, parseProposals, parseDecisions, renderProposals, retireBacklog } from './facts/supersession.js'
 import { gitCommitAndPush } from './git.js'
 import fg from 'fast-glob'
 import { parseFactsFile, type Fact } from './facts/markdown.js'
@@ -148,6 +148,42 @@ async function main() {
     process.exit(0)
   }
 
+  if (cmd === 'supersession-sweep') {
+    const dryRun = process.argv.includes('--dry-run')
+    const readMaybe = async (p: string) => { try { return await readFile(p, 'utf8') } catch { return '' } }
+    const proposalsPath = resolve(cfg.vaultRoot, 'memory/facts/_supersession-proposals.md')
+    const decisionsPath = resolve(cfg.vaultRoot, 'memory/facts/_supersession-decisions.md')
+    const doc = parseProposals(await readMaybe(proposalsPath))
+    const decisions = parseDecisions(await readMaybe(decisionsPath))
+    // B1 rollout guard: every recorded decision must be visible here, else the sweep could
+    // retire a proposal whose decision has not synced yet.
+    const known = new Set(doc.proposals.map((p) => p.id))
+    const missing = decisions.filter((d) => !known.has(d.id)).map((d) => d.id)
+    if (missing.length) { console.error(`[sweep] ${missing.length} decision id(s) not in proposals (sync issue): ${missing.join(', ')}`); process.exit(1) }
+    // Same-path confirm audit (S5): surface each same-path confirm for human eyeball before apply.
+    const bySrc = new Map(doc.proposals.map((p) => [p.id, p]))
+    for (const d of decisions) {
+      if (d.status !== 'confirmed') continue
+      const p = bySrc.get(d.id)
+      if (p && p.loser.sourcePath === p.winner.sourcePath) {
+        console.log(`[sweep] same-path confirm ${d.id} @ ${p.loser.sourcePath}\n    STRIKE (displayed loser): ${p.loser.claim}\n    KEEP   (displayed winner): ${p.winner.claim}`)
+      }
+    }
+    const { doc: out, report } = retireBacklog(doc, decisions)
+    console.log(`[sweep] intra-doc=${report.intraDocRetired} dupes=${report.dupesRetired} kept=${report.kept} decided-preserved=${report.decidedPreserved} pending-after=${report.pendingAfter}`)
+    if (report.conflicts.length) {
+      for (const c of report.conflicts) {
+        const dirs = c.ids.map((id) => `${id}->loser=${decisions.find((d) => d.id === id)?.chosenLoserPath ?? '?'}`)
+        console.error(`[sweep] CONFLICT relKey=${c.relKey}: ${dirs.join(', ')}`)
+      }
+    }
+    if (dryRun) { console.log('[sweep] dry-run, no write'); return }
+    if (report.conflicts.length) { console.error('[sweep] refusing to write with unresolved conflicts'); process.exit(1) }
+    await writeFile(proposalsPath, renderProposals(out))
+    console.log('[sweep] written')
+    return
+  }
+
   if (cmd === 'sources') {
     const sub = process.argv[3]
     if (sub === 'capture') {
@@ -213,7 +249,7 @@ async function main() {
     process.exit(result.pass ? 0 : 1)
   }
 
-  console.error('usage: brain <reindex|serve|dream|sources|facts|eval>')
+  console.error('usage: brain <reindex|serve|dream|supersession-sweep [--dry-run]|sources|facts|eval>')
   process.exit(1)
 }
 
