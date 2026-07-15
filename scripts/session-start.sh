@@ -137,3 +137,8 @@ fi
 
 echo "--------------------------------------"
 echo ""
+echo "[Claude: open your FIRST reply of this session with a 2-3 line status brief"
+echo " covering ONLY the actionable/overdue signals above (skip pure counts like"
+echo " error-rule totals). Lead with it, then address whatever the user asked."
+echo " First reply only, not every turn.]"
+echo ""
