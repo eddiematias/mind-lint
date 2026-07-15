@@ -57,9 +57,10 @@ export interface Proposal {
   axis: string
   loserDecided: boolean   // false => which-wins (equal/ambiguous dates, R-I5)
   proposedOn: string
+  relKey: string
 }
-export type LifecycleKind = 'applied' | 'stale' | 'reverted' | 'checked'
-export interface ProposalsDoc { proposals: Proposal[]; lifecycle: { kind: LifecycleKind; id: string }[] }
+export type LifecycleKind = 'applied' | 'stale' | 'reverted' | 'checked' | 'retired'
+export interface ProposalsDoc { proposals: Proposal[]; lifecycle: { kind: LifecycleKind; id: string; relKey?: string }[] }
 export type DecisionStatus = 'confirmed' | 'dismissed'
 export interface Decision { id: string; status: DecisionStatus; chosenLoserPath: string | null }
 
@@ -70,6 +71,12 @@ const norm = (s: string) => s.trim().replace(/\s+/g, ' ').toLowerCase()
 export function pairId(a: FactRef, b: FactRef): string {
   const sides = [`${a.sourcePath}\0${norm(a.claim)}`, `${b.sourcePath}\0${norm(b.claim)}`].sort()
   return createHash('sha1').update(sides.join('')).digest('hex').slice(0, 16)
+}
+
+// Dedup identity: the sorted source-doc pair. Stable across LLM rewordings of the claim
+// (unlike pairId, which hashes claim text). Printable "::" separator (written to markdown).
+export function relKey(aPath: string, bPath: string): string {
+  return [aPath, bPath].sort().join('::')
 }
 
 const PROPOSAL_HEADER =
@@ -87,11 +94,12 @@ export function renderProposals(doc: ProposalsDoc): string {
       `- winner: \`${p.winner.sourcePath}\` :: ${p.winner.claim}`,
       `- axis: ${p.axis}`,
       `- loserDecided: \`${p.loserDecided}\``,
-      `- proposedOn: \`${p.proposedOn}\``, '')
+      `- proposedOn: \`${p.proposedOn}\``,
+      `- relKey: \`${p.relKey}\``, '')
   }
   if (doc.lifecycle.length > 0) {
     out.push('## lifecycle', '')
-    for (const l of doc.lifecycle) out.push(`- ${l.kind}: ${l.id}`)
+    for (const l of doc.lifecycle) out.push(`- ${l.kind}: ${l.id}${l.relKey ? ` \`${l.relKey}\`` : ''}`)
     out.push('')
   }
   return out.join('\n')
@@ -109,14 +117,14 @@ export function parseProposals(content: string): ProposalsDoc {
     const head = lines[0].trim()
     if (head === 'lifecycle') {
       for (const raw of lines.slice(1)) {
-        const m = raw.trim().match(/^- (applied|stale|reverted|checked):\s*(\S+)/)
-        if (m) doc.lifecycle.push({ kind: m[1] as LifecycleKind, id: m[2] })
+        const m = raw.trim().match(/^- (applied|stale|reverted|checked|retired):\s*(\S+)(?:\s+`([^`]+)`)?/)
+        if (m) doc.lifecycle.push({ kind: m[1] as LifecycleKind, id: m[2], ...(m[3] ? { relKey: m[3] } : {}) })
       }
       continue
     }
     const p: Proposal = {
       id: head, loser: { sourcePath: '', claim: '' }, winner: { sourcePath: '', claim: '' },
-      verdict: 'no_contradiction', confidence: 0, axis: '', loserDecided: true, proposedOn: '',
+      verdict: 'no_contradiction', confidence: 0, axis: '', loserDecided: true, proposedOn: '', relKey: '',
     }
     for (const raw of lines.slice(1)) {
       const line = raw.trim()
@@ -127,7 +135,9 @@ export function parseProposals(content: string): ProposalsDoc {
       else if (line.startsWith('- axis:')) { p.axis = line.slice('- axis:'.length).trim() }
       else if (line.startsWith('- loserDecided:')) { p.loserDecided = bt(line) === 'true' }
       else if (line.startsWith('- proposedOn:')) { p.proposedOn = bt(line) }
+      else if (line.startsWith('- relKey:')) { p.relKey = bt(line) }
     }
+    if (!p.relKey) p.relKey = relKey(p.loser.sourcePath, p.winner.sourcePath)
     if (p.id) doc.proposals.push(p)
   }
   return doc
@@ -414,7 +424,7 @@ export async function runSupersessionProbe(
       doc.proposals.push({
         id, loser: { sourcePath: la.loser.sourcePath, claim: la.loser.claim },
         winner: { sourcePath: la.winner.sourcePath, claim: la.winner.claim },
-        verdict: r.verdict, confidence: r.confidence, axis: r.axis, loserDecided: la.decided, proposedOn: deps.now,
+        verdict: r.verdict, confidence: r.confidence, axis: r.axis, loserDecided: la.decided, proposedOn: deps.now, relKey: relKey(a.sourcePath, b.sourcePath),
       })
       proposed++
     } else {
