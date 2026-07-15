@@ -81,7 +81,7 @@ export function relKey(aPath: string, bPath: string): string {
 
 const PROPOSAL_HEADER =
   '<!-- Cycle-owned, APPEND-ONLY. Each ## block is a supersession candidate. Lifecycle lines ' +
-  '(applied/stale/reverted/checked: <id>) are appended by the cycle. Decisions go in ' +
+  '(applied/stale/reverted/checked/retired: <id>) are appended by the cycle. Decisions go in ' +
   '_supersession-decisions.md (confirm/dismiss there); never edit this file by hand. -->'
 
 export function renderProposals(doc: ProposalsDoc): string {
@@ -273,7 +273,7 @@ export function retireBacklog(doc: ProposalsDoc, decisions: Decision[]): { doc: 
   }
 
   const lifecycle = [...doc.lifecycle]
-  for (const p of live) if (toRetire.has(p.id)) lifecycle.push({ kind: 'retired', id: p.id, relKey: p.relKey })
+  for (const p of live) if (toRetire.has(p.id)) lifecycle.push({ kind: 'retired', id: p.id, relKey: p.relKey || relKey(p.loser.sourcePath, p.winner.sourcePath) })
   const outDoc: ProposalsDoc = { proposals: doc.proposals, lifecycle }
   const resolvedAfter = resolvedIds(outDoc, decisions)
   const pendingAfter = outDoc.proposals.filter((p) => !resolvedAfter.has(p.id)).length
