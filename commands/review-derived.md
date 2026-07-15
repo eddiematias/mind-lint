@@ -45,8 +45,20 @@ graph as `source: derived, role: references`). Steps:
 ## Possible supersessions (facts)
 
 1. Call the `supersessions_pending` MCP tool (server `mind-lint-brain`) with `{ excludePathSubstrings: ["bakebot"], limit: 20 }`. It returns `{ pending, totalPending, hiddenByFilter }`, where each `pending` item has `id`, `verdict`, `confidence`, `loser {sourcePath, claim}`, `winner {sourcePath, claim}`, `axis`, `loserDecided`, `proposedOn`. The tool already drops ids that are decided (in `_supersession-decisions.md`) or settled in the proposals `## lifecycle`, sorts by confidence descending, hides archived-project proposals (the `excludePathSubstrings` filter), and caps the batch at `limit`. If the brain is unreachable, tell Eddie it is not running and stop this phase. (Adjust the args on request: raise `limit`, drop `minConfidence`, or clear `excludePathSubstrings` to include the archived pile.)
-2. State the counts plainly: "showing `<pending.length>` of `<totalPending>` pending, `<hiddenByFilter>` archived/filtered hidden." NEVER imply the batch is the whole queue. For each surfaced item, print the loser claim, the winner claim, the axis, the confidence, and whether `loserDecided` is false (which-wins: Eddie must pick which side loses).
-3. For each surfaced proposal, ask Eddie: confirm (apply the strike), dismiss (never propose again), or skip (leave pending).
+2. State the counts first: "showing `<pending.length>` of `<totalPending>` pending, `<hiddenByFilter>` archived/filtered hidden." NEVER imply the batch is the whole queue. Then present the WHOLE batch as a single scannable markdown table (this format is REQUIRED — Eddie reviews far faster from a table than from prose), one row per proposal:
+
+   | # | What changed (struck -> kept) | Pick loser? | My lean |
+
+   - **#** — 1-based index within the batch.
+   - **What changed** — a terse one-line summary of `loser.claim` -> `winner.claim` (struck side left, surviving side right). Shape, not the full claims.
+   - **Pick loser?** — a ⚠ marker when `loserDecided` is false (the engine did not lock direction, so a confirm must record `loser=<path>`); blank when true. Flag dups and same-file pairs inline.
+   - **My lean** — the recommendation for that row (Confirm / Dismiss / Skip) + a 2-4 word reason. Sanity-check direction before recommending Confirm:
+     - If the struck side is actually the CURRENT truth and the surviving side is the older/plan state, the pairing is INVERTED. Dismiss it — UNLESS `loser` and `winner` are DIFFERENT files, in which case Confirm with `loser` flipped to the correct path. A same-file inverted pair cannot be flipped via `loser=<path>`, so Dismiss.
+     - If both claims are compatible (a rationale plus the change it explains, an origin story plus an added detail), it is NOT a real supersession. Dismiss.
+     - Skip only when the call genuinely needs Eddie's input (e.g. a fact you cannot verify).
+
+   `axis` and `confidence` are available on request but stay out of the default table (they are usually noise — most proposals sit at the same confidence).
+3. Under the table, give a one-line recommended call summarizing the leans (e.g. "Confirm 13 (rows ...), Dismiss 6 (...), Skip 1 (...)"), then ask Eddie for a single go-ahead or per-row overrides. Do NOT walk the rows one at a time unless he asks. Confirm = apply the strike; dismiss = never propose again; skip = leave pending (no line written). Record decisions (step 4) only after he approves.
 4. Write his decisions to `memory/facts/_supersession-decisions.md` (APPEND one line per decision; this file is human/laptop-owned, the cycle only reads it). Create it with this header on first write:
    ```
    # Supersession decisions
@@ -57,3 +69,4 @@ graph as `source: derived, role: references`). Steps:
    - `<id>: dismissed`
    Do not double-decide within a run: track the ids you already wrote this session.
 5. Do NOT edit `_supersession-proposals.md` or any `memory/facts/*.md` fact file. Because the decisions file is append-only and `supersessions_pending` excludes decided ids, re-running continues where you left off, tell Eddie how many remain (`totalPending` minus what he just decided) and that he can re-run to keep going. The next nightly cycle applies confirmed strikes (it is the sole fact-file writer), or he can run `brain dream` to apply sooner. Reversal later is: un-strike the fact in its file; the cycle records that as a dismissal.
+6. SYNC CAVEAT (this file is written on the LAPTOP vault; the dream-cycle runs on the Mini against its own vault clone). Confirmed strikes only land after the decisions file reaches `origin` AND the Mini pulls it: the SessionEnd auto-commit hook commits + `pull --rebase` + pushes to `mind-lint-personal`, then the dream-cycle's `pullVault()` (its first step) pulls before dreaming. So the realistic path is: end session (or manually commit + push the vault) -> nightly cycle (or `brain dream`) picks it up. The `supersessions_pending` resume also depends on this: within one session, BEFORE the push, a plain re-run re-serves the SAME batch (the Mini can't see the new decisions yet). To keep going pre-sync, raise `limit` past what you have already decided and act only on the unseen tail.
