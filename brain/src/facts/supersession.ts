@@ -270,6 +270,7 @@ export function candidatePairs(
   for (let i = 0; i < live.length; i++) {
     for (let j = i + 1; j < live.length; j++) {
       const a = live[i], b = live[j]
+      if (a.sourcePath === b.sourcePath) continue // Move 2: same-doc Context/Decision is history, not a live contradiction
       const c = cosine(cache.get(factKey(a))!, cache.get(factKey(b))!)
       if (c < lo || c > hi) continue
       const id = pairId(a, b)
